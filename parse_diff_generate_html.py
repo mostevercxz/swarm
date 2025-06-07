@@ -277,25 +277,20 @@ class GitCommitReviewGenerator:
             margin: 0;
             padding: 0;
         }
-        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             line-height: 1.6;
             color: #333;
             background-color: #f5f5f5;
             padding: 20px;
         }
-        
         a {
             color: #0366d6;
             text-decoration: none;
         }
-        
         a:hover {
             text-decoration: underline;
         }
-        
-        /* Header styles */
         .header {
             background-color: #fff;
             border: 1px solid #e1e4e8;
@@ -304,28 +299,23 @@ class GitCommitReviewGenerator:
             margin-bottom: 20px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
-        
         .header h1 {
             font-size: 24px;
             margin-bottom: 8px;
         }
-        
         .commit-info {
             display: flex;
             flex-wrap: wrap;
             margin-bottom: 16px;
         }
-        
         .commit-info-item {
             margin-right: 24px;
             margin-bottom: 8px;
         }
-        
         .commit-info-label {
             font-weight: 600;
             color: #586069;
         }
-        
         .commit-message {
             background-color: #f6f8fa;
             border: 1px solid #e1e4e8;
@@ -334,66 +324,54 @@ class GitCommitReviewGenerator:
             margin-top: 16px;
             white-space: pre-wrap;
         }
-        
-        /* Tabs */
-        .tabs {
+        /* Main review layout */
+        .review-main {
             display: flex;
-            border-bottom: 1px solid #e1e4e8;
-            margin-bottom: 16px;
+            flex-direction: row;
+            gap: 24px;
+            min-height: 400px;
         }
-        
-        .tab {
-            padding: 8px 16px;
-            cursor: pointer;
-            border: 1px solid transparent;
-            border-bottom: none;
-            margin-bottom: -1px;
+        .file-list-panel {
+            width: 320px;
+            min-width: 220px;
+            max-width: 400px;
         }
-        
-        .tab.active {
-            background-color: #fff;
-            border-color: #e1e4e8;
-            border-radius: 3px 3px 0 0;
-            font-weight: 600;
-        }
-        
-        /* File list */
         .file-list {
             background-color: #fff;
             border: 1px solid #e1e4e8;
             border-radius: 3px;
             margin-bottom: 20px;
         }
-        
         .file-item {
             padding: 8px 16px;
             border-bottom: 1px solid #e1e4e8;
             display: flex;
             align-items: center;
+            cursor: pointer;
         }
-        
         .file-item:last-child {
             border-bottom: none;
         }
-        
+        .file-item.active {
+            background-color: #f1f8ff;
+        }
         .file-status {
             margin-right: 8px;
             font-weight: 600;
         }
-        
         .file-status.added {
             color: #28a745;
         }
-        
         .file-status.modified {
             color: #0366d6;
         }
-        
         .file-status.deleted {
             color: #d73a49;
         }
-        
-        /* Diff styles */
+        .diff-panel {
+            flex: 1 1 0%;
+            min-width: 0;
+        }
         .diff-container {
             background-color: #fff;
             border: 1px solid #e1e4e8;
@@ -401,44 +379,37 @@ class GitCommitReviewGenerator:
             margin-bottom: 20px;
             overflow: hidden;
         }
-        
         .diff-header {
             background-color: #f6f8fa;
             padding: 8px 16px;
             border-bottom: 1px solid #e1e4e8;
-            font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+            font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
             font-size: 12px;
             color: #586069;
         }
-        
         .diff-content {
             overflow-x: auto;
         }
-        
         .diff-table {
             width: 100%;
             border-collapse: collapse;
-            font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+            font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
             font-size: 12px;
             tab-size: 4;
         }
-        
         .diff-table tr {
             height: 20px;
         }
-        
         .diff-hunk-header {
             background-color: #f1f8ff;
             color: #586069;
         }
-        
         .diff-sign {
             width: 1%;
             padding: 0 8px;
             text-align: center;
             user-select: none;
         }
-        
         .diff-line-num {
             width: 1%;
             padding: 0 8px;
@@ -447,41 +418,32 @@ class GitCommitReviewGenerator:
             user-select: none;
             border-right: 1px solid #e1e4e8;
         }
-        
         .diff-line-content {
             padding: 0 8px;
             white-space: pre;
         }
-        
         .diff-added {
             background-color: #e6ffec;
         }
-        
         .diff-added .diff-sign {
             background-color: #ccffd8;
             color: #28a745;
         }
-        
         .diff-removed {
             background-color: #ffebe9;
         }
-        
         .diff-removed .diff-sign {
             background-color: #ffd7d5;
             color: #d73a49;
         }
-        
         .diff-context {
             background-color: #fff;
         }
-        
         .diff-empty {
             padding: 16px;
             color: #586069;
             font-style: italic;
         }
-        
-        /* Footer */
         .footer {
             margin-top: 40px;
             text-align: center;
@@ -489,11 +451,9 @@ class GitCommitReviewGenerator:
             font-size: 12px;
         }
         """
-        
         css_path = os.path.join(self.assets_dir, 'style.css')
         with open(css_path, 'w') as f:
             f.write(css_content)
-            
         return css_path
     
     def generate_js(self):
@@ -505,51 +465,27 @@ class GitCommitReviewGenerator:
         """
         js_content = """
         document.addEventListener('DOMContentLoaded', function() {
-            // Tab switching functionality
-            const tabs = document.querySelectorAll('.tab');
-            const tabContents = document.querySelectorAll('.tab-content');
-            
-            tabs.forEach(tab => {
-                tab.addEventListener('click', () => {
-                    // Remove active class from all tabs and hide all tab contents
-                    tabs.forEach(t => t.classList.remove('active'));
-                    tabContents.forEach(content => content.style.display = 'none');
-                    
-                    // Add active class to clicked tab and show corresponding content
-                    tab.classList.add('active');
-                    const contentId = tab.getAttribute('data-tab');
-                    document.getElementById(contentId).style.display = 'block';
-                });
-            });
-            
             // File list click to show diff
             const fileItems = document.querySelectorAll('.file-item');
             const diffContainers = document.querySelectorAll('.diff-container');
-            
             fileItems.forEach(item => {
                 item.addEventListener('click', () => {
                     // Remove active class from all file items
                     fileItems.forEach(i => i.classList.remove('active'));
-                    
                     // Add active class to clicked item
                     item.classList.add('active');
-                    
                     // Hide all diff containers
                     diffContainers.forEach(container => container.style.display = 'none');
-                    
                     // Show corresponding diff container
                     const diffId = item.getAttribute('data-diff-id');
                     document.getElementById(diffId).style.display = 'block';
                 });
             });
-            
-            // Initialize with first tab and file active
-            if (tabs.length > 0) {
-                tabs[0].click();
-            }
-            
+            // Initialize with first file active
             if (fileItems.length > 0) {
-                fileItems[0].click();
+                fileItems[0].classList.add('active');
+                const diffId = fileItems[0].getAttribute('data-diff-id');
+                document.getElementById(diffId).style.display = 'block';
             }
         });
         """
@@ -580,101 +516,81 @@ class GitCommitReviewGenerator:
         self.generate_css()
         self.generate_js()
         
-        # Generate HTML
+        # Generate HTML (side-by-side layout)
         html_content = f"""<!DOCTYPE html>
-<html lang="en">
+<html lang=\"en\">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset=\"UTF-8\">
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
     <title>Review: {commit_info['subject']}</title>
-    <link rel="stylesheet" href="assets/style.css">
+    <link rel=\"stylesheet\" href=\"assets/style.css\">
 </head>
 <body>
-    <div class="header">
+    <div class=\"header\">
         <h1>{html.escape(commit_info['subject'])}</h1>
-        
-        <div class="commit-info">
-            <div class="commit-info-item">
-                <div class="commit-info-label">Author</div>
+        <div class=\"commit-info\">
+            <div class=\"commit-info-item\">
+                <div class=\"commit-info-label\">Author</div>
                 <div>{html.escape(commit_info['author_name'])} &lt;{html.escape(commit_info['author_email'])}&gt;</div>
             </div>
-            
-            <div class="commit-info-item">
-                <div class="commit-info-label">Commit</div>
+            <div class=\"commit-info-item\">
+                <div class=\"commit-info-label\">Commit</div>
                 <div>{commit_info['hash']}</div>
             </div>
-            
-            <div class="commit-info-item">
-                <div class="commit-info-label">Date</div>
+            <div class=\"commit-info-item\">
+                <div class=\"commit-info-label\">Date</div>
                 <div>{commit_info['date']}</div>
             </div>
         </div>
-        
-        <div class="commit-message">{html.escape(commit_info['body'])}</div>
+        <div class=\"commit-message\">{html.escape(commit_info['body'])}</div>
     </div>
-    
-    <div class="tabs">
-        <div class="tab active" data-tab="tab-files">Files Changed</div>
-        <div class="tab" data-tab="tab-diff">Diff</div>
-    </div>
-    
-    <div id="tab-files" class="tab-content">
-        <div class="file-list">
+    <div class=\"review-main\">
+        <div class=\"file-list-panel\">
+            <div class=\"file-list\">
 """
-        
         # Add file list
         for i, file_info in enumerate(commit_info['files_changed']):
             status_class = file_info['status']
             status_text = file_info['status'].capitalize()
-            
             html_content += f"""
-            <div class="file-item" data-diff-id="diff-{i}">
-                <span class="file-status {status_class}">{status_text}</span>
-                <span class="file-name">{html.escape(file_info['filename'])}</span>
-            </div>
+                <div class=\"file-item\" data-diff-id=\"diff-{i}\">
+                    <span class=\"file-status {status_class}\">{status_text}</span>
+                    <span class=\"file-name\">{html.escape(file_info['filename'])}</span>
+                </div>
 """
-        
         html_content += """
+            </div>
         </div>
-    </div>
-    
-    <div id="tab-diff" class="tab-content" style="display: none;">
+        <div class=\"diff-panel\">
 """
-        
         # Add diff content
         for i, file_info in enumerate(commit_info['files_changed']):
             filename = file_info['filename']
             diff_text = self.get_file_diff(commit_hash, filename)
             diff_html = self.parse_diff_to_html(diff_text)
-            
             display_style = 'block' if i == 0 else 'none'
-            
             html_content += f"""
-        <div id="diff-{i}" class="diff-container" style="display: {display_style};">
-            <div class="diff-header">
-                <div>{html.escape(filename)}</div>
+            <div id=\"diff-{i}\" class=\"diff-container\" style=\"display: {display_style};\">
+                <div class=\"diff-header\">
+                    <div>{html.escape(filename)}</div>
+                </div>
+                {diff_html}
             </div>
-            {diff_html}
-        </div>
 """
-        
         html_content += """
+        </div>
     </div>
-    
-    <div class="footer">
+    <div class=\"footer\">
         Generated by Git Commit Review Generator
     </div>
-    
-    <script src="assets/script.js"></script>
+    <script src=\"assets/script.js\"></script>
 </body>
 </html>
 """
-        
         # Write HTML to file
         output_file = os.path.join(self.output_dir, f"review-{commit_hash[:7]}.html")
         with open(output_file, 'w') as f:
             f.write(html_content)
-            
         return output_file
     
     def generate_index_page(self, commit_hashes):
