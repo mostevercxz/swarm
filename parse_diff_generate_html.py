@@ -607,6 +607,11 @@ class GitCommitReviewGenerator:
                     let insertIdx = Array.from(table.rows).indexOf(tr);
                     let expandType = btn.getAttribute('data-expand');
                     let contextLines = 10;
+                    function lineAlreadyPresent(ln) {
+                        return Array.from(table.querySelectorAll('.expanded-context .diff-line-num')).some(function(td) {
+                            return parseInt(td.textContent) === ln;
+                        });
+                    }
                     if (expandType === 'above') {
                         // Find first visible line number in this hunk
                         let firstLineNum = null;
@@ -621,14 +626,55 @@ class GitCommitReviewGenerator:
                             }
                         }
                         if (firstLineNum === null) return;
-                        let start = Math.max(1, firstLineNum - contextLines);
+                        // Find previous diff hunk header above this expand row
+                        let prevHunkEndLine = 0;
+                        for (let i = insertIdx - 1; i >= 0; --i) {
+                            let row = table.rows[i];
+                            if (row.classList.contains('diff-hunk-header')) {
+                                // Find the last line number in the previous hunk
+                                // Scan down from this header to the next hunk or end
+                                for (let j = i + 1; j < table.rows.length; ++j) {
+                                    let r = table.rows[j];
+                                    if (r.classList.contains('diff-hunk-header')) break;
+                                    if (r.classList.contains('diff-context') || r.classList.contains('diff-added')) {
+                                        let num = r.querySelectorAll('.diff-line-num')[1];
+                                        if (num && num.textContent) {
+                                            let n = parseInt(num.textContent);
+                                            if (!isNaN(n) && n > prevHunkEndLine) prevHunkEndLine = n;
+                                        }
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                        let start = Math.max(prevHunkEndLine + 1, firstLineNum - contextLines);
                         let end = firstLineNum;
+                        let inserted = false;
                         for (let ln = start; ln < end; ++ln) {
+                            if (lineAlreadyPresent(ln)) continue;
                             let content = lines[ln - 1] || '';
                             let newRow = document.createElement('tr');
                             newRow.className = 'diff-context expanded-context';
                             newRow.innerHTML = `<td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>${ln}</td><td class='diff-line-content'>${escapeHtml(content)}</td>`;
-                            table.tBodies[0].insertBefore(newRow, tr.nextSibling);
+                            table.tBodies[0].insertBefore(newRow, tr);
+                            inserted = true;
+                        }
+                        // Hide the button if we reached the top or next would overlap with previous diff
+                        if (start === prevHunkEndLine + 1 || !inserted) {
+                            btn.style.display = 'none';
+                        } else {
+                            // Check if next batch would overlap
+                            let nextStart = Math.max(prevHunkEndLine + 1, start - contextLines);
+                            let overlap = false;
+                            for (let ln = nextStart; ln < start; ++ln) {
+                                if (lineAlreadyPresent(ln)) {
+                                    overlap = true;
+                                    break;
+                                }
+                            }
+                            if (nextStart === prevHunkEndLine + 1 || overlap) {
+                                btn.style.display = 'none';
+                            }
                         }
                     } else if (expandType === 'below') {
                         // Find last visible line number in this hunk
@@ -646,12 +692,31 @@ class GitCommitReviewGenerator:
                         if (lastLineNum === null) return;
                         let start = lastLineNum + 1;
                         let end = Math.min(lines.length + 1, lastLineNum + 1 + contextLines);
+                        let inserted = false;
                         for (let ln = start; ln < end; ++ln) {
+                            if (lineAlreadyPresent(ln)) continue;
                             let content = lines[ln - 1] || '';
                             let newRow = document.createElement('tr');
                             newRow.className = 'diff-context expanded-context';
                             newRow.innerHTML = `<td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>${ln}</td><td class='diff-line-content'>${escapeHtml(content)}</td>`;
                             table.tBodies[0].insertBefore(newRow, tr);
+                            inserted = true;
+                        }
+                        // Hide the button if we reached the end or next would overlap
+                        if (end > lines.length || !inserted) {
+                            btn.style.display = 'none';
+                        } else {
+                            let nextEnd = Math.min(lines.length + 1, end + contextLines);
+                            let overlap = false;
+                            for (let ln = end; ln < nextEnd; ++ln) {
+                                if (lineAlreadyPresent(ln)) {
+                                    overlap = true;
+                                    break;
+                                }
+                            }
+                            if (end > lines.length || overlap) {
+                                btn.style.display = 'none';
+                            }
                         }
                     }
                 });
