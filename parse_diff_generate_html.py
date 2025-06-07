@@ -545,6 +545,24 @@ class GitCommitReviewGenerator:
             border-left: 1px dotted #e1e4e8;
             padding-left: 0.5em;
         }
+        .expand-btn {
+            background-color: #f6f8fa;
+            border: 1px solid #d1d5da;
+            border-radius: 3px;
+            padding: 4px 8px;
+            font-size: 12px;
+            cursor: pointer;
+            margin-right: 8px;
+            color: #586069;
+        }
+        .expand-btn:hover {
+            background-color: #e1e4e8;
+        }
+        .expand-row td {
+            padding: 8px;
+            background-color: #f6f8fa;
+            border-bottom: 1px solid #e1e4e8;
+        }
         """
         css_path = os.path.join(self.assets_dir, 'style.css')
         with open(css_path, 'w', encoding='utf-8') as f:
@@ -609,23 +627,155 @@ class GitCommitReviewGenerator:
                     let expandType = btn.getAttribute('data-expand');
                     let contextStart = parseInt(btn.getAttribute('data-context-start'));
                     let contextEnd = parseInt(btn.getAttribute('data-context-end'));
+                    
+                    // Handle 10-line expansion
+                    if (expandType === 'above-10') {
+                        contextStart = Math.max(contextStart, contextEnd - 9);
+                    } else if (expandType === 'below-10') {
+                        contextEnd = Math.min(contextEnd, contextStart + 9);
+                    }
+                    
                     // Insert the context lines, but only if not already present
+                    console.log(`===== EXPAND BUTTON CLICKED =====`);
+                    console.log(`Expand type: ${expandType}`);
+                    console.log(`Context range: ${contextStart} to ${contextEnd}`);
+                    
                     let insertedRows = [];
-                    let visibleLines = new Set(Array.from(table.querySelectorAll('.diff-line-num')).map(td => parseInt(td.textContent)).filter(n => !isNaN(n)));
+                    // Debug: Check HTML structure in detail
+                    console.log(`Table HTML (first 500 chars): ${table.innerHTML.substring(0, 500)}`);
+                    
+                    let allLineNumCells = Array.from(table.querySelectorAll('.diff-line-num'));
+                    console.log(`Found ${allLineNumCells.length} line number cells`);
+                    allLineNumCells.slice(0, 10).forEach((cell, i) => {
+                        console.log(`Line cell ${i}: "${cell.textContent}" (parent: ${cell.parentElement.className}) (innerHTML: "${cell.innerHTML}")`);
+                    });
+                    
+                    let visibleLines = new Set();
+                    let allRows = Array.from(table.querySelectorAll('tr'));
+                    console.log(`Total table rows: ${allRows.length}`);
+                    allRows.slice(0, 10).forEach((row, i) => {
+                        let lineNumCells = row.querySelectorAll('.diff-line-num');
+                        console.log(`Row ${i} (${row.className}): ${lineNumCells.length} line cells`);
+                        if (lineNumCells.length >= 2) {
+                            let oldLineText = lineNumCells[0].textContent.trim();
+                            let newLineText = lineNumCells[1].textContent.trim();
+                            console.log(`  Old line: "${oldLineText}", New line: "${newLineText}"`);
+                            let newLineNum = parseInt(newLineText);
+                            if (!isNaN(newLineNum) && newLineNum > 0) {
+                                visibleLines.add(newLineNum);
+                                console.log(`  Added line ${newLineNum} to visible set`);
+                            }
+                        }
+                    });
+                    console.log(`Currently visible lines: [${Array.from(visibleLines).sort((a,b) => a-b).join(', ')}]`);
+                    
+                    // Collect all lines to insert first (skip already visible lines)
+                    let linesToInsert = [];
                     for (let ln = contextStart; ln <= contextEnd; ++ln) {
-                        if (visibleLines.has(ln)) continue;
-                        let content = lines[ln - 1] || '';
+                        if (!visibleLines.has(ln)) {
+                            let content = lines[ln - 1] || '';
+                            linesToInsert.push({lineNum: ln, content: content});
+                        } else {
+                            console.log(`Skipping line ${ln} - already visible`);
+                        }
+                    }
+                    console.log(`Lines to insert: [${linesToInsert.map(l => l.lineNum).join(', ')}]`);
+                    
+                    // Find the insertion point for the entire block (before the first line with a higher number)
+                    let insertionPoint = null;
+                    let rows = Array.from(table.tBodies[0].rows);
+                    console.log(`Total rows in table: ${rows.length}`);
+                    
+                    for (let i = 0; i < rows.length; i++) {
+                        let row = rows[i];
+                        let lineNumCells = row.querySelectorAll('.diff-line-num');
+                        if (lineNumCells.length >= 2) {
+                            let newLineText = lineNumCells[1].textContent.trim();
+                            let rowLineNum = parseInt(newLineText);
+                            if (!isNaN(rowLineNum) && rowLineNum > 0) {
+                                console.log(`Row ${i}: line number ${rowLineNum}`);
+                                if (rowLineNum > contextStart) {
+                                    insertionPoint = row;
+                                    console.log(`Found insertion point at row ${i} (line ${rowLineNum})`);
+                                    break;
+                                }
+                            } else {
+                                console.log(`Row ${i}: invalid line number "${newLineText}" (${row.className})`);
+                            }
+                        } else {
+                            console.log(`Row ${i}: no line number cells (${row.className})`);
+                        }
+                    }
+                    
+                    // If no insertion point found, insert before the button row
+                    if (!insertionPoint) {
+                        insertionPoint = tr;
+                        console.log(`No insertion point found, using button row as insertion point`);
+                    }
+                    
+                    // Insert all lines as a block in the correct order
+                    console.log(`Inserting ${linesToInsert.length} lines...`);
+                    linesToInsert.forEach(function(lineInfo, index) {
                         let newRow = document.createElement('tr');
                         newRow.className = 'diff-context expanded-context';
-                        newRow.innerHTML = `<td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>${ln}</td><td class='diff-line-content'>${escapeHtml(content)}</td>`;
-                        table.tBodies[0].insertBefore(newRow, tr);
+                        newRow.innerHTML = `<td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>${lineInfo.lineNum}</td><td class='diff-line-content'>${escapeHtml(lineInfo.content)}</td>`;
+                        table.tBodies[0].insertBefore(newRow, insertionPoint);
                         insertedRows.push(newRow);
+                        console.log(`Inserted line ${lineInfo.lineNum} (${index + 1}/${linesToInsert.length})`);
+                    });
+                    
+                    // Log final state (use same logic as before)
+                    let finalVisibleLines = new Set();
+                    table.querySelectorAll('tr').forEach((row) => {
+                        let lineNumCells = row.querySelectorAll('.diff-line-num');
+                        if (lineNumCells.length >= 2) {
+                            let newLineText = lineNumCells[1].textContent.trim();
+                            let newLineNum = parseInt(newLineText);
+                            if (!isNaN(newLineNum) && newLineNum > 0) {
+                                finalVisibleLines.add(newLineNum);
+                            }
+                        }
+                    });
+                    console.log(`Final visible lines: [${Array.from(finalVisibleLines).sort((a,b) => a-b).join(', ')}]`);
+                    console.log(`===== EXPAND COMPLETE =====`);
+                    
+                    // For 10-line expansions, update the button range and keep it
+                    if (expandType.endsWith('-10')) {
+                        let originalStart = parseInt(btn.getAttribute('data-context-start'));
+                        let originalEnd = parseInt(btn.getAttribute('data-context-end'));
+                        
+                        if (expandType === 'above-10') {
+                            let newEnd = contextStart - 1;
+                            if (newEnd >= originalStart) {
+                                btn.setAttribute('data-context-end', newEnd);
+                            } else {
+                                tr.remove();
+                            }
+                        } else if (expandType === 'below-10') {
+                            let newStart = contextEnd + 1;
+                            if (newStart <= originalEnd) {
+                                btn.setAttribute('data-context-start', newStart);
+                            } else {
+                                tr.remove();
+                            }
+                        }
+                    } else {
+                        // Remove the old button row for full expansion
+                        tr.remove();
                     }
-                    // Remove the old button row
-                    tr.remove();
-                    // Only insert a new button if there are still hidden lines in the next range
+                    // Only insert a new button if there are still hidden lines in the next range (for full expansion only)
                     function hasHiddenLines(start, end) {
-                        let visibleLines = new Set(Array.from(table.querySelectorAll('.diff-line-num')).map(td => parseInt(td.textContent)).filter(n => !isNaN(n)));
+                        let visibleLines = new Set();
+                        table.querySelectorAll('tr').forEach((row) => {
+                            let lineNumCells = row.querySelectorAll('.diff-line-num');
+                            if (lineNumCells.length >= 2) {
+                                let newLineText = lineNumCells[1].textContent.trim();
+                                let newLineNum = parseInt(newLineText);
+                                if (!isNaN(newLineNum) && newLineNum > 0) {
+                                    visibleLines.add(newLineNum);
+                                }
+                            }
+                        });
                         for (let ln = start; ln <= end; ++ln) {
                             if (!visibleLines.has(ln)) return true;
                         }
@@ -638,9 +788,9 @@ class GitCommitReviewGenerator:
                         if (nextStart <= nextEnd && hasHiddenLines(nextStart, nextEnd)) {
                             let newBtnRow = document.createElement('tr');
                             newBtnRow.className = 'expand-row';
-                            newBtnRow.innerHTML = `<td colspan='4'><button class='expand-btn' data-expand='above' data-context-start='${nextStart}' data-context-end='${nextEnd}'>Show more above</button></td>`;
+                            newBtnRow.innerHTML = `<td colspan='4'><button class='expand-btn' data-expand='above-10' data-context-start='${nextStart}' data-context-end='${nextEnd}'>Show 10 lines above</button> <button class='expand-btn' data-expand='above' data-context-start='${nextStart}' data-context-end='${nextEnd}'>Show more above</button></td>`;
                             table.tBodies[0].insertBefore(newBtnRow, insertedRows[0]);
-                            newBtnRow.querySelector('.expand-btn').addEventListener('click', arguments.callee);
+                            newBtnRow.querySelectorAll('.expand-btn').forEach(newBtn => newBtn.addEventListener('click', arguments.callee));
                         }
                     }
                     if (expandType === 'below' && contextEnd < lines.length) {
@@ -650,14 +800,14 @@ class GitCommitReviewGenerator:
                         if (nextStart <= nextEnd && hasHiddenLines(nextStart, nextEnd)) {
                             let newBtnRow = document.createElement('tr');
                             newBtnRow.className = 'expand-row';
-                            newBtnRow.innerHTML = `<td colspan='4'><button class='expand-btn' data-expand='below' data-context-start='${nextStart}' data-context-end='${nextEnd}'>Show more below</button></td>`;
+                            newBtnRow.innerHTML = `<td colspan='4'><button class='expand-btn' data-expand='below-10' data-context-start='${nextStart}' data-context-end='${nextEnd}'>Show 10 lines below</button> <button class='expand-btn' data-expand='below' data-context-start='${nextStart}' data-context-end='${nextEnd}'>Show more below</button></td>`;
                             let insertAfter = insertedRows[insertedRows.length - 1];
                             if (insertAfter && insertAfter.nextSibling) {
                                 table.tBodies[0].insertBefore(newBtnRow, insertAfter.nextSibling);
                             } else {
                                 table.tBodies[0].appendChild(newBtnRow);
                             }
-                            newBtnRow.querySelector('.expand-btn').addEventListener('click', arguments.callee);
+                            newBtnRow.querySelectorAll('.expand-btn').forEach(newBtn => newBtn.addEventListener('click', arguments.callee));
                         }
                     }
                 });
@@ -817,7 +967,8 @@ class GitCommitReviewGenerator:
                 context_end = hunk_start - 1
                 if context_start <= context_end:
                     # All gaps between hunks should be "Show more above" since they appear above the next hunk
-                    html_lines.append(f"<tr class='expand-row'><td colspan='4'><button class='expand-btn' data-expand='above' data-context-start='{context_start}' data-context-end='{context_end}'>Show more above</button></td></tr>")
+                    # Show both 10-line and full expansion buttons
+                    html_lines.append(f"<tr class='expand-row'><td colspan='4'><button class='expand-btn' data-expand='above-10' data-context-start='{context_start}' data-context-end='{context_end}'>Show 10 lines above</button> <button class='expand-btn' data-expand='above' data-context-start='{context_start}' data-context-end='{context_end}'>Show more above</button></td></tr>")
             # Render hunk header
             hunk_header_line = lines[hunk['diff_idx']]
             html_lines.append(f"<tr class='diff-hunk-header'><td colspan='4'>{html.escape(hunk_header_line)}</td></tr>")
@@ -871,7 +1022,7 @@ class GitCommitReviewGenerator:
             context_start = prev_hunk_end + 1
             context_end = len(full_lines)
             if context_start <= context_end:
-                html_lines.append(f"<tr class='expand-row'><td colspan='4'><button class='expand-btn' data-expand='below' data-context-start='{context_start}' data-context-end='{context_end}'>Show more below</button></td></tr>")
+                html_lines.append(f"<tr class='expand-row'><td colspan='4'><button class='expand-btn' data-expand='below-10' data-context-start='{context_start}' data-context-end='{context_end}'>Show 10 lines below</button> <button class='expand-btn' data-expand='below' data-context-start='{context_start}' data-context-end='{context_end}'>Show more below</button></td></tr>")
         html_lines.append("</table>")
         html_lines.append("</div>")
         return "\n".join(html_lines), hunk_meta
