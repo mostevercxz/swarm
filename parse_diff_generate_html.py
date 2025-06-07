@@ -465,28 +465,23 @@ class GitCommitReviewGenerator:
         """
         js_content = """
         document.addEventListener('DOMContentLoaded', function() {
-            // File list click to show diff
+            // File list click to scroll to diff
             const fileItems = document.querySelectorAll('.file-item');
-            const diffContainers = document.querySelectorAll('.diff-container');
             fileItems.forEach(item => {
                 item.addEventListener('click', () => {
                     // Remove active class from all file items
                     fileItems.forEach(i => i.classList.remove('active'));
                     // Add active class to clicked item
                     item.classList.add('active');
-                    // Hide all diff containers
-                    diffContainers.forEach(container => container.style.display = 'none');
-                    // Show corresponding diff container
+                    // Scroll to the corresponding diff
                     const diffId = item.getAttribute('data-diff-id');
-                    document.getElementById(diffId).style.display = 'block';
+                    const diffElem = document.getElementById(diffId);
+                    if (diffElem) {
+                        diffElem.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
                 });
             });
-            // Initialize with first file active
-            if (fileItems.length > 0) {
-                fileItems[0].classList.add('active');
-                const diffId = fileItems[0].getAttribute('data-diff-id');
-                document.getElementById(diffId).style.display = 'block';
-            }
+            // First file-item is active by default (already set in HTML)
         });
         """
         
@@ -516,7 +511,7 @@ class GitCommitReviewGenerator:
         self.generate_css()
         self.generate_js()
         
-        # Generate HTML (side-by-side layout)
+        # Generate HTML (side-by-side layout, all diffs shown)
         html_content = f"""<!DOCTYPE html>
 <html lang=\"en\">
 <head>
@@ -553,7 +548,7 @@ class GitCommitReviewGenerator:
             status_class = file_info['status']
             status_text = file_info['status'].capitalize()
             html_content += f"""
-                <div class=\"file-item\" data-diff-id=\"diff-{i}\">
+                <div class=\"file-item{' active' if i == 0 else ''}\" data-diff-id=\"diff-{i}\">
                     <span class=\"file-status {status_class}\">{status_text}</span>
                     <span class=\"file-name\">{html.escape(file_info['filename'])}</span>
                 </div>
@@ -563,14 +558,13 @@ class GitCommitReviewGenerator:
         </div>
         <div class=\"diff-panel\">
 """
-        # Add diff content
+        # Add all diffs (all visible, each with anchor)
         for i, file_info in enumerate(commit_info['files_changed']):
             filename = file_info['filename']
             diff_text = self.get_file_diff(commit_hash, filename)
             diff_html = self.parse_diff_to_html(diff_text)
-            display_style = 'block' if i == 0 else 'none'
             html_content += f"""
-            <div id=\"diff-{i}\" class=\"diff-container\" style=\"display: {display_style};\">
+            <div id=\"diff-{i}\" class=\"diff-container\">
                 <div class=\"diff-header\">
                     <div>{html.escape(filename)}</div>
                 </div>
