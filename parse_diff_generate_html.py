@@ -287,7 +287,8 @@ class GitCommitReviewGenerator:
                 idx = value['__index__']
                 status_class = file_info['status']
                 status_text = file_info['status'].capitalize()
-                html_out += f'<li class="file-leaf"><div class="file-item" data-diff-id="diff-{idx}"><span class="file-status {status_class}">{status_text}</span><span class="file-name">{html.escape(file_info["filename"])}</span></div></li>'
+                base_name = os.path.basename(file_info["filename"])
+                html_out += f'<li class="file-leaf"><div class="file-item" data-diff-id="diff-{idx}"><span class="file-status {status_class}">{status_text}</span><span class="file-name">{html.escape(base_name)}</span></div></li>'
             else:
                 folder_id = f"folder-{parent_path.replace('/', '-')}-{name}".replace(' ', '-')
                 html_out += f'<li class="file-folder" data-folder="{html.escape(name)}"><div class="folder-label" data-folder-id="{folder_id}"><span class="folder-caret">▶</span><span class="folder-name">{html.escape(name)}</span></div>'
