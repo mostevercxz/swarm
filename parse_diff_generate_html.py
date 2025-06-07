@@ -604,125 +604,53 @@ class GitCommitReviewGenerator:
                     const table = btn.closest('table');
                     const filename = table.getAttribute('data-filename');
                     const lines = fileContents[filename] || [];
-                    let insertIdx = Array.from(table.rows).indexOf(tr);
                     let expandType = btn.getAttribute('data-expand');
-                    let contextLines = 10;
-                    function lineAlreadyPresent(ln) {
-                        return Array.from(table.querySelectorAll('.expanded-context .diff-line-num')).some(function(td) {
-                            return parseInt(td.textContent) === ln;
-                        });
+                    let contextStart = parseInt(btn.getAttribute('data-context-start'));
+                    let contextEnd = parseInt(btn.getAttribute('data-context-end'));
+                    // Insert the context lines, but only if not already present
+                    let insertedRows = [];
+                    let visibleLines = new Set(Array.from(table.querySelectorAll('.diff-line-num')).map(td => parseInt(td.textContent)).filter(n => !isNaN(n)));
+                    for (let ln = contextStart; ln <= contextEnd; ++ln) {
+                        if (visibleLines.has(ln)) continue;
+                        let content = lines[ln - 1] || '';
+                        let newRow = document.createElement('tr');
+                        newRow.className = 'diff-context expanded-context';
+                        newRow.innerHTML = `<td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>${ln}</td><td class='diff-line-content'>${escapeHtml(content)}</td>`;
+                        table.tBodies[0].insertBefore(newRow, tr);
+                        insertedRows.push(newRow);
                     }
-                    if (expandType === 'above') {
-                        // Find first visible line number in this hunk
-                        let firstLineNum = null;
-                        for (let i = insertIdx + 1; i < table.rows.length; ++i) {
-                            let row = table.rows[i];
-                            if (row.classList.contains('diff-context') || row.classList.contains('diff-added')) {
-                                let num = row.querySelectorAll('.diff-line-num')[1];
-                                if (num && num.textContent) {
-                                    firstLineNum = parseInt(num.textContent);
-                                    break;
-                                }
-                            }
+                    // Remove the old button row
+                    tr.remove();
+                    // Only insert a new button if there are still hidden lines in the next range
+                    function hasHiddenLines(start, end) {
+                        let visibleLines = new Set(Array.from(table.querySelectorAll('.diff-line-num')).map(td => parseInt(td.textContent)).filter(n => !isNaN(n)));
+                        for (let ln = start; ln <= end; ++ln) {
+                            if (!visibleLines.has(ln)) return true;
                         }
-                        if (firstLineNum === null) return;
-                        // Find previous diff hunk header above this expand row
-                        let prevHunkEndLine = 0;
-                        for (let i = insertIdx - 1; i >= 0; --i) {
-                            let row = table.rows[i];
-                            if (row.classList.contains('diff-hunk-header')) {
-                                // Find the last line number in the previous hunk
-                                // Scan down from this header to the next hunk or end
-                                for (let j = i + 1; j < table.rows.length; ++j) {
-                                    let r = table.rows[j];
-                                    if (r.classList.contains('diff-hunk-header')) break;
-                                    if (r.classList.contains('diff-context') || r.classList.contains('diff-added')) {
-                                        let num = r.querySelectorAll('.diff-line-num')[1];
-                                        if (num && num.textContent) {
-                                            let n = parseInt(num.textContent);
-                                            if (!isNaN(n) && n > prevHunkEndLine) prevHunkEndLine = n;
-                                        }
-                                    }
-                                }
-                                break;
-                            }
+                        return false;
+                    }
+                    if (expandType === 'above' && contextStart > 1) {
+                        let linesPerExpand = contextEnd - contextStart + 1;
+                        let nextStart = Math.max(1, contextStart - linesPerExpand);
+                        let nextEnd = contextStart - 1;
+                        if (nextStart <= nextEnd && hasHiddenLines(nextStart, nextEnd)) {
+                            let newBtnRow = document.createElement('tr');
+                            newBtnRow.className = 'expand-row';
+                            newBtnRow.innerHTML = `<td colspan='4'><button class='expand-btn' data-expand='above' data-context-start='${nextStart}' data-context-end='${nextEnd}'>Show more above</button></td>`;
+                            table.tBodies[0].insertBefore(newBtnRow, insertedRows[0]);
+                            newBtnRow.querySelector('.expand-btn').addEventListener('click', arguments.callee);
                         }
-                        let start = Math.max(prevHunkEndLine + 1, firstLineNum - contextLines);
-                        let end = firstLineNum;
-                        let inserted = false;
-                        let firstInsertedRow = null;
-                        for (let ln = start; ln < end; ++ln) {
-                            if (lineAlreadyPresent(ln)) continue;
-                            let content = lines[ln - 1] || '';
-                            let newRow = document.createElement('tr');
-                            newRow.className = 'diff-context expanded-context';
-                            newRow.innerHTML = `<td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>${ln}</td><td class='diff-line-content'>${escapeHtml(content)}</td>`;
-                            table.tBodies[0].insertBefore(newRow, tr);
-                            if (!firstInsertedRow) firstInsertedRow = newRow;
-                            inserted = true;
-                        }
-                        // Move the expand row to the new top
-                        if (firstInsertedRow) {
-                            table.tBodies[0].insertBefore(tr, firstInsertedRow);
-                        }
-                        // Hide the button if we reached the top or next would overlap with previous diff
-                        if (start === prevHunkEndLine + 1 || !inserted) {
-                            btn.style.display = 'none';
-                        } else {
-                            // Check if next batch would overlap
-                            let nextStart = Math.max(prevHunkEndLine + 1, start - contextLines);
-                            let overlap = false;
-                            for (let ln = nextStart; ln < start; ++ln) {
-                                if (lineAlreadyPresent(ln)) {
-                                    overlap = true;
-                                    break;
-                                }
-                            }
-                            if (nextStart === prevHunkEndLine + 1 || overlap) {
-                                btn.style.display = 'none';
-                            }
-                        }
-                    } else if (expandType === 'below') {
-                        // Find last visible line number in this hunk
-                        let lastLineNum = null;
-                        for (let i = insertIdx - 1; i >= 0; --i) {
-                            let row = table.rows[i];
-                            if (row.classList.contains('diff-context') || row.classList.contains('diff-added')) {
-                                let num = row.querySelectorAll('.diff-line-num')[1];
-                                if (num && num.textContent) {
-                                    lastLineNum = parseInt(num.textContent);
-                                    break;
-                                }
-                            }
-                        }
-                        if (lastLineNum === null) return;
-                        let start = lastLineNum + 1;
-                        let end = Math.min(lines.length + 1, lastLineNum + 1 + contextLines);
-                        let inserted = false;
-                        for (let ln = start; ln < end; ++ln) {
-                            if (lineAlreadyPresent(ln)) continue;
-                            let content = lines[ln - 1] || '';
-                            let newRow = document.createElement('tr');
-                            newRow.className = 'diff-context expanded-context';
-                            newRow.innerHTML = `<td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>${ln}</td><td class='diff-line-content'>${escapeHtml(content)}</td>`;
-                            table.tBodies[0].insertBefore(newRow, tr);
-                            inserted = true;
-                        }
-                        // Hide the button if we reached the end or next would overlap
-                        if (end > lines.length || !inserted) {
-                            btn.style.display = 'none';
-                        } else {
-                            let nextEnd = Math.min(lines.length + 1, end + contextLines);
-                            let overlap = false;
-                            for (let ln = end; ln < nextEnd; ++ln) {
-                                if (lineAlreadyPresent(ln)) {
-                                    overlap = true;
-                                    break;
-                                }
-                            }
-                            if (end > lines.length || overlap) {
-                                btn.style.display = 'none';
-                            }
+                    }
+                    if (expandType === 'below' && contextEnd < lines.length) {
+                        let linesPerExpand = contextEnd - contextStart + 1;
+                        let nextStart = contextEnd + 1;
+                        let nextEnd = Math.min(lines.length, contextEnd + linesPerExpand);
+                        if (nextStart <= nextEnd && hasHiddenLines(nextStart, nextEnd)) {
+                            let newBtnRow = document.createElement('tr');
+                            newBtnRow.className = 'expand-row';
+                            newBtnRow.innerHTML = `<td colspan='4'><button class='expand-btn' data-expand='below' data-context-start='${nextStart}' data-context-end='${nextEnd}'>Show more below</button></td>`;
+                            table.tBodies[0].insertBefore(newBtnRow, insertedRows[insertedRows.length - 1]?.nextSibling);
+                            newBtnRow.querySelector('.expand-btn').addEventListener('click', arguments.callee);
                         }
                     }
                 });
@@ -842,79 +770,99 @@ class GitCommitReviewGenerator:
     def parse_diff_to_html_with_expand(self, diff_text, filename, file_idx):
         """
         Like parse_diff_to_html, but adds expandable context controls and returns hunk metadata for JS.
+        Renders collapsed context blocks for lines not included in the diff, so hunk headers and diff lines appear at the correct file line numbers.
+        For each gap, only a single 'Show more below' button is rendered (never both above and below for the same gap).
         """
         if not diff_text:
             return "<div class='diff-empty'>No changes</div>", []
         html_lines = []
         lines = diff_text.split('\n')
-        in_header = True
-        header_lines = []
-        old_line_num = 0
-        new_line_num = 0
+        # Get the full new file content for context
+        try:
+            with open(os.path.join(self.repo_path, filename), 'r', encoding='utf-8', errors='replace') as f:
+                full_lines = f.read().splitlines()
+        except Exception:
+            full_lines = []
         hunk_meta = []
-        for i, line in enumerate(lines):
-            if in_header and line.startswith('@@'):
-                in_header = False
+        hunk_infos = []
+        # Parse all hunks and their start/end lines
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            if line.startswith('@@'):
                 match = re.match(r'^@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? \+(?P<new_start>\d+)(?:,(?P<new_count>\d+))? @@', line)
                 if match:
-                    old_line_num = int(match.group('old_start'))
-                    new_line_num = int(match.group('new_start'))
-                    hunk_start = new_line_num
-                # Add header
-                if header_lines:
-                    html_lines.append("<div class='diff-header'>")
-                    for header_line in header_lines:
-                        html_lines.append(f"<div>{html.escape(header_line)}</div>")
-                    html_lines.append("</div>")
-                # Start diff content
-                html_lines.append("<div class='diff-content'>")
-                html_lines.append(f"<table class='diff-table' data-filename='{html.escape(filename)}' data-file-idx='{file_idx}'>")
-            if in_header:
-                header_lines.append(line)
-                continue
-            if line.startswith('@@'):
-                # End previous hunk, start new hunk
-                html_lines.append(f"<tr class='expand-row'><td colspan='4'><button class='expand-btn' data-expand='above'>Show more above</button></td></tr>")
-                html_lines.append(f"<tr class='diff-hunk-header'><td colspan='4'>{html.escape(line)}</td></tr>")
-                hunk_start = new_line_num
-                hunk_meta.append({'start': new_line_num, 'file': filename})
-            elif line.startswith('+'):
-                html_lines.append("<tr class='diff-added'>")
-                html_lines.append("<td class='diff-sign'>+</td>")
-                html_lines.append("<td class='diff-line-num'></td>")
-                html_lines.append(f"<td class='diff-line-num'>{new_line_num}</td>")
-                html_lines.append(f"<td class='diff-line-content'>{html.escape(line[1:])}</td>")
-                html_lines.append("</tr>")
-                new_line_num += 1
-            elif line.startswith('-'):
-                html_lines.append("<tr class='diff-removed'>")
-                html_lines.append("<td class='diff-sign'>-</td>")
-                html_lines.append(f"<td class='diff-line-num'>{old_line_num}</td>")
-                html_lines.append("<td class='diff-line-num'></td>")
-                html_lines.append(f"<td class='diff-line-content'>{html.escape(line[1:])}</td>")
-                html_lines.append("</tr>")
-                old_line_num += 1
-            elif line.startswith(' '):
-                html_lines.append("<tr class='diff-context'>")
-                html_lines.append("<td class='diff-sign'>&nbsp;</td>")
-                html_lines.append(f"<td class='diff-line-num'>{old_line_num}</td>")
-                html_lines.append(f"<td class='diff-line-num'>{new_line_num}</td>")
-                html_lines.append(f"<td class='diff-line-content'>{html.escape(line[1:])}</td>")
-                html_lines.append("</tr>")
-                old_line_num += 1
-                new_line_num += 1
-            else:
-                html_lines.append("<tr>")
-                html_lines.append("<td class='diff-sign'>&nbsp;</td>")
-                html_lines.append("<td class='diff-line-num'></td>")
-                html_lines.append("<td class='diff-line-num'></td>")
-                html_lines.append(f"<td class='diff-line-content'>{html.escape(line)}</td>")
-                html_lines.append("</tr>")
-        # Add expand below at end of table
-        html_lines.append(f"<tr class='expand-row'><td colspan='4'><button class='expand-btn' data-expand='below'>Show more below</button></td></tr>")
-        if not in_header:
-            html_lines.append("</table>")
-            html_lines.append("</div>")
+                    new_start = int(match.group('new_start'))
+                    new_count = int(match.group('new_count') or '1')
+                    hunk_infos.append({'diff_idx': i, 'new_start': new_start, 'new_count': new_count})
+            i += 1
+        html_lines.append("<div class='diff-content'>")
+        html_lines.append(f"<table class='diff-table' data-filename='{html.escape(filename)}' data-file-idx='{file_idx}'>")
+        prev_hunk_end = 0
+        i = 0
+        for hunk_idx, hunk in enumerate(hunk_infos):
+            hunk_start = hunk['new_start']
+            hunk_count = hunk['new_count']
+            hunk_end = hunk_start + hunk_count - 1
+            # At the very top of the file, render 'Show more above' if needed
+            if hunk_start > prev_hunk_end + 1:
+                if prev_hunk_end == 0:
+                    html_lines.append(f"<tr class='expand-row'><td colspan='4'><button class='expand-btn' data-expand='above' data-context-start='{prev_hunk_end + 1}' data-context-end='{hunk_start - 1}'>Show more above</button></td></tr>")
+                else:
+                    html_lines.append(f"<tr class='expand-row'><td colspan='4'><button class='expand-btn' data-expand='below' data-context-start='{prev_hunk_end + 1}' data-context-end='{hunk_start - 1}'>Show more below</button></td></tr>")
+            # Render hunk header
+            hunk_header_line = lines[hunk['diff_idx']]
+            html_lines.append(f"<tr class='diff-hunk-header'><td colspan='4'>{html.escape(hunk_header_line)}</td></tr>")
+            hunk_meta.append({'start': hunk_start, 'file': filename})
+            # Render hunk lines
+            cur_old = None
+            cur_new = hunk_start
+            # Find old_start for this hunk
+            match = re.match(r'^@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? ', hunk_header_line)
+            if match:
+                cur_old = int(match.group('old_start'))
+            j = hunk['diff_idx'] + 1
+            while j < len(lines) and (not lines[j].startswith('@@')):
+                l = lines[j]
+                if l.startswith('+'):
+                    html_lines.append("<tr class='diff-added'>")
+                    html_lines.append("<td class='diff-sign'>+</td>")
+                    html_lines.append("<td class='diff-line-num'></td>")
+                    html_lines.append(f"<td class='diff-line-num'>{cur_new}</td>")
+                    html_lines.append(f"<td class='diff-line-content'>{html.escape(l[1:])}</td>")
+                    html_lines.append("</tr>")
+                    cur_new += 1
+                elif l.startswith('-'):
+                    html_lines.append("<tr class='diff-removed'>")
+                    html_lines.append("<td class='diff-sign'>-</td>")
+                    html_lines.append(f"<td class='diff-line-num'>{cur_old}</td>")
+                    html_lines.append("<td class='diff-line-num'></td>")
+                    html_lines.append(f"<td class='diff-line-content'>{html.escape(l[1:])}</td>")
+                    html_lines.append("</tr>")
+                    cur_old += 1
+                elif l.startswith(' '):
+                    html_lines.append("<tr class='diff-context'>")
+                    html_lines.append("<td class='diff-sign'>&nbsp;</td>")
+                    html_lines.append(f"<td class='diff-line-num'>{cur_old}</td>")
+                    html_lines.append(f"<td class='diff-line-num'>{cur_new}</td>")
+                    html_lines.append(f"<td class='diff-line-content'>{html.escape(l[1:])}</td>")
+                    html_lines.append("</tr>")
+                    cur_old += 1
+                    cur_new += 1
+                else:
+                    html_lines.append("<tr>")
+                    html_lines.append("<td class='diff-sign'>&nbsp;</td>")
+                    html_lines.append("<td class='diff-line-num'></td>")
+                    html_lines.append("<td class='diff-line-num'></td>")
+                    html_lines.append(f"<td class='diff-line-content'>{html.escape(l)}</td>")
+                    html_lines.append("</tr>")
+                j += 1
+            prev_hunk_end = hunk_end
+        # If there are lines after the last hunk, render collapsed context
+        if prev_hunk_end < len(full_lines):
+            html_lines.append(f"<tr class='expand-row'><td colspan='4'><button class='expand-btn' data-expand='below' data-context-start='{prev_hunk_end + 1}' data-context-end='{len(full_lines)}'>Show more below</button></td></tr>")
+        html_lines.append("</table>")
+        html_lines.append("</div>")
         return "\n".join(html_lines), hunk_meta
     
     def generate_index_page(self, commit_hashes):
