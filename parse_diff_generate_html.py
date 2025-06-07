@@ -16,6 +16,7 @@ import re
 import html
 import shutil
 from pathlib import Path
+import json
 
 class GitCommitReviewGenerator:
     """
@@ -237,7 +238,6 @@ class GitCommitReviewGenerator:
                 html_lines.append("<td class='diff-line-num'></td>")
                 html_lines.append(f"<td class='diff-line-content'>{html.escape(line[1:])}</td>")
                 html_lines.append("</tr>")
-                old_line_num += 1
             elif line.startswith(' '):
                 # Context line
                 html_lines.append("<tr class='diff-context'>")
@@ -596,6 +596,70 @@ class GitCommitReviewGenerator:
                     });
                 });
             }
+            // Expandable context logic
+            const fileContents = JSON.parse(document.getElementById('new-file-contents').textContent);
+            document.querySelectorAll('.expand-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    const tr = btn.closest('tr');
+                    const table = btn.closest('table');
+                    const filename = table.getAttribute('data-filename');
+                    const lines = fileContents[filename] || [];
+                    let insertIdx = Array.from(table.rows).indexOf(tr);
+                    let expandType = btn.getAttribute('data-expand');
+                    let contextLines = 10;
+                    if (expandType === 'above') {
+                        // Find first visible line number in this hunk
+                        let firstLineNum = null;
+                        for (let i = insertIdx + 1; i < table.rows.length; ++i) {
+                            let row = table.rows[i];
+                            if (row.classList.contains('diff-context') || row.classList.contains('diff-added')) {
+                                let num = row.querySelectorAll('.diff-line-num')[1];
+                                if (num && num.textContent) {
+                                    firstLineNum = parseInt(num.textContent);
+                                    break;
+                                }
+                            }
+                        }
+                        if (firstLineNum === null) return;
+                        let start = Math.max(1, firstLineNum - contextLines);
+                        let end = firstLineNum;
+                        for (let ln = start; ln < end; ++ln) {
+                            let content = lines[ln - 1] || '';
+                            let newRow = document.createElement('tr');
+                            newRow.className = 'diff-context expanded-context';
+                            newRow.innerHTML = `<td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>${ln}</td><td class='diff-line-content'>${escapeHtml(content)}</td>`;
+                            table.tBodies[0].insertBefore(newRow, tr.nextSibling);
+                        }
+                    } else if (expandType === 'below') {
+                        // Find last visible line number in this hunk
+                        let lastLineNum = null;
+                        for (let i = insertIdx - 1; i >= 0; --i) {
+                            let row = table.rows[i];
+                            if (row.classList.contains('diff-context') || row.classList.contains('diff-added')) {
+                                let num = row.querySelectorAll('.diff-line-num')[1];
+                                if (num && num.textContent) {
+                                    lastLineNum = parseInt(num.textContent);
+                                    break;
+                                }
+                            }
+                        }
+                        if (lastLineNum === null) return;
+                        let start = lastLineNum + 1;
+                        let end = Math.min(lines.length + 1, lastLineNum + 1 + contextLines);
+                        for (let ln = start; ln < end; ++ln) {
+                            let content = lines[ln - 1] || '';
+                            let newRow = document.createElement('tr');
+                            newRow.className = 'diff-context expanded-context';
+                            newRow.innerHTML = `<td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>${ln}</td><td class='diff-line-content'>${escapeHtml(content)}</td>`;
+                            table.tBodies[0].insertBefore(newRow, tr);
+                        }
+                    }
+                });
+            });
+            function escapeHtml(text) {
+                var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+                return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+            }
         });
         """
         
@@ -627,72 +691,160 @@ class GitCommitReviewGenerator:
         
         # Build file tree
         file_tree = self._build_file_tree(commit_info['files_changed'])
-        
+        # Preload new file contents for dynamic context
+        new_file_contents = {}
+        for file_info in commit_info['files_changed']:
+            filename = file_info['filename']
+            try:
+                with open(os.path.join(self.repo_path, filename), 'r', encoding='utf-8', errors='replace') as f:
+                    new_file_contents[filename] = f.read().splitlines()
+            except Exception:
+                new_file_contents[filename] = []
         # Generate HTML
-        html_content = f"""<!DOCTYPE html>
-<html lang=\"en\">
+        html_content = f'''<!DOCTYPE html>
+<html lang="en">
 <head>
-    <meta charset=\"UTF-8\">
-    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Review: {commit_info['subject']}</title>
-    <link rel=\"stylesheet\" href=\"assets/style.css\">
+    <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-    <div class=\"header\">
+    <div class="header">
         <h1>{html.escape(commit_info['subject'])}</h1>
-        <div class=\"commit-info\">
-            <div class=\"commit-info-item\">
-                <div class=\"commit-info-label\">Author</div>
+        <div class="commit-info">
+            <div class="commit-info-item">
+                <div class="commit-info-label">Author</div>
                 <div>{html.escape(commit_info['author_name'])} &lt;{html.escape(commit_info['author_email'])}&gt;</div>
             </div>
-            <div class=\"commit-info-item\">
-                <div class=\"commit-info-label\">Commit</div>
+            <div class="commit-info-item">
+                <div class="commit-info-label">Commit</div>
                 <div>{commit_info['hash']}</div>
             </div>
-            <div class=\"commit-info-item\">
-                <div class=\"commit-info-label\">Date</div>
+            <div class="commit-info-item">
+                <div class="commit-info-label">Date</div>
                 <div>{commit_info['date']}</div>
             </div>
         </div>
-        <div class=\"commit-message\">{html.escape(commit_info['body'])}</div>
+        <div class="commit-message">{html.escape(commit_info['body'])}</div>
     </div>
-    <div class=\"review-main\">
-        <div class=\"file-list-panel\">
+    <div class="review-main">
+        <div class="file-list-panel">
             <input type="text" class="file-search-box" placeholder="Search files..." />
             <div class="file-list file-tree-container">
                 {self._render_file_tree(file_tree)}
             </div>
         </div>
-        <div class=\"diff-panel\">
-"""
+        <div class="diff-panel">
+'''
         # Add all diffs (all visible, each with anchor)
         for i, file_info in enumerate(commit_info['files_changed']):
             filename = file_info['filename']
             diff_text = self.get_file_diff(commit_hash, filename)
-            diff_html = self.parse_diff_to_html(diff_text)
-            html_content += f"""
-            <div id=\"diff-{i}\" class=\"diff-container\">
-                <div class=\"diff-header\">
+            diff_html, hunk_meta = self.parse_diff_to_html_with_expand(diff_text, filename, i)
+            html_content += f'''
+            <div id="diff-{i}" class="diff-container">
+                <div class="diff-header">
                     <div>{html.escape(filename)}</div>
                 </div>
                 {diff_html}
             </div>
-"""
-        html_content += """
+'''
+        # Embed new file contents as JSON for JS
+        html_content += f'''<script id="new-file-contents" type="application/json">{json.dumps(new_file_contents)}</script>'''
+        html_content += '''
         </div>
     </div>
-    <div class=\"footer\">
+    <div class="footer">
         Generated by Git Commit Review Generator
     </div>
-    <script src=\"assets/script.js\"></script>
+    <script src="assets/script.js"></script>
 </body>
 </html>
-"""
+'''
         # Write HTML to file
         output_file = os.path.join(self.output_dir, f"review-{commit_hash[:7]}.html")
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(html_content)
         return output_file
+    
+    def parse_diff_to_html_with_expand(self, diff_text, filename, file_idx):
+        """
+        Like parse_diff_to_html, but adds expandable context controls and returns hunk metadata for JS.
+        """
+        if not diff_text:
+            return "<div class='diff-empty'>No changes</div>", []
+        html_lines = []
+        lines = diff_text.split('\n')
+        in_header = True
+        header_lines = []
+        old_line_num = 0
+        new_line_num = 0
+        hunk_meta = []
+        for i, line in enumerate(lines):
+            if in_header and line.startswith('@@'):
+                in_header = False
+                match = re.match(r'^@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? \+(?P<new_start>\d+)(?:,(?P<new_count>\d+))? @@', line)
+                if match:
+                    old_line_num = int(match.group('old_start'))
+                    new_line_num = int(match.group('new_start'))
+                    hunk_start = new_line_num
+                # Add header
+                if header_lines:
+                    html_lines.append("<div class='diff-header'>")
+                    for header_line in header_lines:
+                        html_lines.append(f"<div>{html.escape(header_line)}</div>")
+                    html_lines.append("</div>")
+                # Start diff content
+                html_lines.append("<div class='diff-content'>")
+                html_lines.append(f"<table class='diff-table' data-filename='{html.escape(filename)}' data-file-idx='{file_idx}'>")
+            if in_header:
+                header_lines.append(line)
+                continue
+            if line.startswith('@@'):
+                # End previous hunk, start new hunk
+                html_lines.append(f"<tr class='expand-row'><td colspan='4'><button class='expand-btn' data-expand='above'>Show more above</button></td></tr>")
+                html_lines.append(f"<tr class='diff-hunk-header'><td colspan='4'>{html.escape(line)}</td></tr>")
+                hunk_start = new_line_num
+                hunk_meta.append({'start': new_line_num, 'file': filename})
+            elif line.startswith('+'):
+                html_lines.append("<tr class='diff-added'>")
+                html_lines.append("<td class='diff-sign'>+</td>")
+                html_lines.append("<td class='diff-line-num'></td>")
+                html_lines.append(f"<td class='diff-line-num'>{new_line_num}</td>")
+                html_lines.append(f"<td class='diff-line-content'>{html.escape(line[1:])}</td>")
+                html_lines.append("</tr>")
+                new_line_num += 1
+            elif line.startswith('-'):
+                html_lines.append("<tr class='diff-removed'>")
+                html_lines.append("<td class='diff-sign'>-</td>")
+                html_lines.append(f"<td class='diff-line-num'>{old_line_num}</td>")
+                html_lines.append("<td class='diff-line-num'></td>")
+                html_lines.append(f"<td class='diff-line-content'>{html.escape(line[1:])}</td>")
+                html_lines.append("</tr>")
+                old_line_num += 1
+            elif line.startswith(' '):
+                html_lines.append("<tr class='diff-context'>")
+                html_lines.append("<td class='diff-sign'>&nbsp;</td>")
+                html_lines.append(f"<td class='diff-line-num'>{old_line_num}</td>")
+                html_lines.append(f"<td class='diff-line-num'>{new_line_num}</td>")
+                html_lines.append(f"<td class='diff-line-content'>{html.escape(line[1:])}</td>")
+                html_lines.append("</tr>")
+                old_line_num += 1
+                new_line_num += 1
+            else:
+                html_lines.append("<tr>")
+                html_lines.append("<td class='diff-sign'>&nbsp;</td>")
+                html_lines.append("<td class='diff-line-num'></td>")
+                html_lines.append("<td class='diff-line-num'></td>")
+                html_lines.append(f"<td class='diff-line-content'>{html.escape(line)}</td>")
+                html_lines.append("</tr>")
+        # Add expand below at end of table
+        html_lines.append(f"<tr class='expand-row'><td colspan='4'><button class='expand-btn' data-expand='below'>Show more below</button></td></tr>")
+        if not in_header:
+            html_lines.append("</table>")
+            html_lines.append("</div>")
+        return "\n".join(html_lines), hunk_meta
     
     def generate_index_page(self, commit_hashes):
         """
