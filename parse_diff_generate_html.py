@@ -186,9 +186,19 @@ class GitCommitReviewGenerator:
         in_header = True
         header_lines = []
         
+        # Track line numbers
+        old_line_num = 0
+        new_line_num = 0
+        
         for i, line in enumerate(lines):
             if in_header and line.startswith('@@'):
                 in_header = False
+                # Parse the hunk header to get starting line numbers
+                match = re.match(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@', line)
+                if match:
+                    old_line_num = int(match.group(1))
+                    new_line_num = int(match.group(3))
+                
                 # Add header
                 if header_lines:
                     html_lines.append("<div class='diff-header'>")
@@ -208,30 +218,42 @@ class GitCommitReviewGenerator:
             if line.startswith('@@'):
                 # Diff hunk header
                 html_lines.append("<tr class='diff-hunk-header'>")
-                html_lines.append(f"<td colspan='3'>{html.escape(line)}</td>")
+                html_lines.append(f"<td colspan='4'>{html.escape(line)}</td>")
                 html_lines.append("</tr>")
             elif line.startswith('+'):
                 # Added line
                 html_lines.append("<tr class='diff-added'>")
                 html_lines.append("<td class='diff-sign'>+</td>")
+                html_lines.append("<td class='diff-line-num'></td>")
+                html_lines.append(f"<td class='diff-line-num'>{new_line_num}</td>")
                 html_lines.append(f"<td class='diff-line-content'>{html.escape(line[1:])}</td>")
                 html_lines.append("</tr>")
+                new_line_num += 1
             elif line.startswith('-'):
                 # Removed line
                 html_lines.append("<tr class='diff-removed'>")
                 html_lines.append("<td class='diff-sign'>-</td>")
+                html_lines.append(f"<td class='diff-line-num'>{old_line_num}</td>")
+                html_lines.append("<td class='diff-line-num'></td>")
                 html_lines.append(f"<td class='diff-line-content'>{html.escape(line[1:])}</td>")
                 html_lines.append("</tr>")
+                old_line_num += 1
             elif line.startswith(' '):
                 # Context line
                 html_lines.append("<tr class='diff-context'>")
                 html_lines.append("<td class='diff-sign'>&nbsp;</td>")
+                html_lines.append(f"<td class='diff-line-num'>{old_line_num}</td>")
+                html_lines.append(f"<td class='diff-line-num'>{new_line_num}</td>")
                 html_lines.append(f"<td class='diff-line-content'>{html.escape(line[1:])}</td>")
                 html_lines.append("</tr>")
+                old_line_num += 1
+                new_line_num += 1
             else:
                 # Other lines
                 html_lines.append("<tr>")
                 html_lines.append("<td class='diff-sign'>&nbsp;</td>")
+                html_lines.append("<td class='diff-line-num'></td>")
+                html_lines.append("<td class='diff-line-num'></td>")
                 html_lines.append(f"<td class='diff-line-content'>{html.escape(line)}</td>")
                 html_lines.append("</tr>")
         
@@ -415,6 +437,15 @@ class GitCommitReviewGenerator:
             padding: 0 8px;
             text-align: center;
             user-select: none;
+        }
+        
+        .diff-line-num {
+            width: 1%;
+            padding: 0 8px;
+            text-align: right;
+            color: #586069;
+            user-select: none;
+            border-right: 1px solid #e1e4e8;
         }
         
         .diff-line-content {
