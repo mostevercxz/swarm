@@ -369,6 +369,11 @@ class GitCommitReviewGenerator:
             width: 320px;
             min-width: 220px;
             max-width: 400px;
+            position: sticky;
+            top: 0;
+            align-self: flex-start;
+            z-index: 2;
+            background: #f5f5f5;
         }
         .file-list {
             background-color: #fff;
