@@ -263,6 +263,39 @@ class GitCommitReviewGenerator:
         
         return "\n".join(html_lines)
     
+    def _build_file_tree(self, files_changed):
+        """
+        Build a nested dictionary representing the folder/file tree from a flat file list.
+        """
+        tree = {}
+        for idx, file_info in enumerate(files_changed):
+            parts = file_info['filename'].split('/')
+            node = tree
+            for part in parts[:-1]:
+                node = node.setdefault(part, {})
+            node[parts[-1]] = {'__file__': file_info, '__index__': idx}
+        return tree
+
+    def _render_file_tree(self, tree, parent_path="", level=0):
+        """
+        Recursively render the file tree as nested <ul>/<li> HTML.
+        """
+        html_out = '<ul class="file-tree' + (" root" if level == 0 else "") + '">'
+        for name, value in sorted(tree.items()):
+            if isinstance(value, dict) and '__file__' in value:
+                file_info = value['__file__']
+                idx = value['__index__']
+                status_class = file_info['status']
+                status_text = file_info['status'].capitalize()
+                html_out += f'<li class="file-leaf"><div class="file-item" data-diff-id="diff-{idx}"><span class="file-status {status_class}">{status_text}</span><span class="file-name">{html.escape(file_info["filename"])}</span></div></li>'
+            else:
+                folder_id = f"folder-{parent_path.replace('/', '-')}-{name}".replace(' ', '-')
+                html_out += f'<li class="file-folder" data-folder="{html.escape(name)}"><div class="folder-label" data-folder-id="{folder_id}"><span class="folder-caret">▶</span><span class="folder-name">{html.escape(name)}</span></div>'
+                html_out += self._render_file_tree(value, parent_path + name + '/', level+1)
+                html_out += '</li>'
+        html_out += '</ul>'
+        return html_out
+    
     def generate_css(self):
         """
         Generate CSS for the review page.
@@ -450,9 +483,63 @@ class GitCommitReviewGenerator:
             color: #586069;
             font-size: 12px;
         }
+        .file-search-box {
+            width: 100%;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            border: 1px solid #e1e4e8;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+        .file-tree {
+            list-style: none;
+            padding-left: 0;
+        }
+        .file-tree .file-folder > .folder-label {
+            cursor: pointer;
+            font-weight: 600;
+            padding: 6px 16px;
+            display: flex;
+            align-items: center;
+        }
+        .file-tree .file-folder > .folder-label .folder-caret {
+            display: inline-block;
+            width: 1em;
+            margin-right: 4px;
+            transition: transform 0.2s;
+        }
+        .file-tree .file-folder.collapsed > ul {
+            display: none;
+        }
+        .file-tree .file-folder.collapsed > .folder-label .folder-caret {
+            transform: rotate(0deg);
+        }
+        .file-tree .file-folder > .folder-label .folder-caret {
+            transform: rotate(90deg);
+        }
+        .file-tree .file-leaf .file-item {
+            padding-left: 32px;
+        }
+        .file-tree .file-leaf .file-item.active {
+            background-color: #f1f8ff;
+        }
+        .file-tree .file-leaf .file-status {
+            margin-right: 8px;
+        }
+        .file-tree .file-leaf .file-name {
+            word-break: break-all;
+        }
+        .file-tree .file-folder {
+            margin-bottom: 0;
+        }
+        .file-tree .file-folder > ul {
+            margin-left: 1em;
+            border-left: 1px dotted #e1e4e8;
+            padding-left: 0.5em;
+        }
         """
         css_path = os.path.join(self.assets_dir, 'style.css')
-        with open(css_path, 'w') as f:
+        with open(css_path, 'w', encoding='utf-8') as f:
             f.write(css_content)
         return css_path
     
@@ -465,15 +552,19 @@ class GitCommitReviewGenerator:
         """
         js_content = """
         document.addEventListener('DOMContentLoaded', function() {
+            // Folder expand/collapse
+            document.querySelectorAll('.folder-label').forEach(function(label) {
+                label.addEventListener('click', function() {
+                    var li = label.parentElement;
+                    li.classList.toggle('collapsed');
+                });
+            });
             // File list click to scroll to diff
             const fileItems = document.querySelectorAll('.file-item');
             fileItems.forEach(item => {
                 item.addEventListener('click', () => {
-                    // Remove active class from all file items
                     fileItems.forEach(i => i.classList.remove('active'));
-                    // Add active class to clicked item
                     item.classList.add('active');
-                    // Scroll to the corresponding diff
                     const diffId = item.getAttribute('data-diff-id');
                     const diffElem = document.getElementById(diffId);
                     if (diffElem) {
@@ -481,12 +572,29 @@ class GitCommitReviewGenerator:
                     }
                 });
             });
-            // First file-item is active by default (already set in HTML)
+            // File search filter
+            const searchBox = document.querySelector('.file-search-box');
+            if (searchBox) {
+                searchBox.addEventListener('input', function() {
+                    const query = searchBox.value.toLowerCase();
+                    document.querySelectorAll('.file-tree .file-leaf').forEach(function(leaf) {
+                        const name = leaf.textContent.toLowerCase();
+                        leaf.style.display = name.includes(query) ? '' : 'none';
+                    });
+                    // Hide folders with no visible children
+                    document.querySelectorAll('.file-tree .file-folder').forEach(function(folder) {
+                        const anyVisible = Array.from(folder.querySelectorAll(':scope > ul > .file-leaf, :scope > ul > .file-folder')).some(function(child) {
+                            return child.style.display !== 'none';
+                        });
+                        folder.style.display = anyVisible ? '' : 'none';
+                    });
+                });
+            }
         });
         """
         
         js_path = os.path.join(self.assets_dir, 'script.js')
-        with open(js_path, 'w') as f:
+        with open(js_path, 'w', encoding='utf-8') as f:
             f.write(js_content)
             
         return js_path
@@ -511,7 +619,10 @@ class GitCommitReviewGenerator:
         self.generate_css()
         self.generate_js()
         
-        # Generate HTML (side-by-side layout, all diffs shown)
+        # Build file tree
+        file_tree = self._build_file_tree(commit_info['files_changed'])
+        
+        # Generate HTML
         html_content = f"""<!DOCTYPE html>
 <html lang=\"en\">
 <head>
@@ -541,19 +652,9 @@ class GitCommitReviewGenerator:
     </div>
     <div class=\"review-main\">
         <div class=\"file-list-panel\">
-            <div class=\"file-list\">
-"""
-        # Add file list
-        for i, file_info in enumerate(commit_info['files_changed']):
-            status_class = file_info['status']
-            status_text = file_info['status'].capitalize()
-            html_content += f"""
-                <div class=\"file-item{' active' if i == 0 else ''}\" data-diff-id=\"diff-{i}\">
-                    <span class=\"file-status {status_class}\">{status_text}</span>
-                    <span class=\"file-name\">{html.escape(file_info['filename'])}</span>
-                </div>
-"""
-        html_content += """
+            <input type="text" class="file-search-box" placeholder="Search files..." />
+            <div class="file-list file-tree-container">
+                {self._render_file_tree(file_tree)}
             </div>
         </div>
         <div class=\"diff-panel\">
@@ -583,7 +684,7 @@ class GitCommitReviewGenerator:
 """
         # Write HTML to file
         output_file = os.path.join(self.output_dir, f"review-{commit_hash[:7]}.html")
-        with open(output_file, 'w') as f:
+        with open(output_file, 'w', encoding='utf-8') as f:
             f.write(html_content)
         return output_file
     
@@ -680,7 +781,7 @@ class GitCommitReviewGenerator:
         
         # Write HTML to file
         output_file = os.path.join(self.output_dir, "index.html")
-        with open(output_file, 'w') as f:
+        with open(output_file, 'w', encoding='utf-8') as f:
             f.write(html_content)
             
         return output_file
