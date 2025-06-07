@@ -650,6 +650,7 @@ class GitCommitReviewGenerator:
                         let start = Math.max(prevHunkEndLine + 1, firstLineNum - contextLines);
                         let end = firstLineNum;
                         let inserted = false;
+                        let firstInsertedRow = null;
                         for (let ln = start; ln < end; ++ln) {
                             if (lineAlreadyPresent(ln)) continue;
                             let content = lines[ln - 1] || '';
@@ -657,7 +658,12 @@ class GitCommitReviewGenerator:
                             newRow.className = 'diff-context expanded-context';
                             newRow.innerHTML = `<td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>${ln}</td><td class='diff-line-content'>${escapeHtml(content)}</td>`;
                             table.tBodies[0].insertBefore(newRow, tr);
+                            if (!firstInsertedRow) firstInsertedRow = newRow;
                             inserted = true;
+                        }
+                        // Move the expand row to the new top
+                        if (firstInsertedRow) {
+                            table.tBodies[0].insertBefore(tr, firstInsertedRow);
                         }
                         // Hide the button if we reached the top or next would overlap with previous diff
                         if (start === prevHunkEndLine + 1 || !inserted) {
