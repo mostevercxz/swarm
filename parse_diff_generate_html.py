@@ -314,7 +314,7 @@ class GitCommitReviewGenerator:
             padding: 0;
         }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             line-height: 1.6;
             color: #333;
             background-color: #f5f5f5;
@@ -464,7 +464,7 @@ class GitCommitReviewGenerator:
             background-color: #f6f8fa;
             padding: 8px 16px;
             border-bottom: 1px solid #e1e4e8;
-            font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+            font-family: 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
             font-size: 12px;
             color: #586069;
         }
@@ -474,7 +474,7 @@ class GitCommitReviewGenerator:
         .diff-table {
             width: 100%;
             border-collapse: collapse;
-            font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+            font-family: 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
             font-size: 12px;
             tab-size: 4;
         }
@@ -498,23 +498,25 @@ class GitCommitReviewGenerator:
             color: #586069;
             user-select: none;
             border-right: 1px solid #e1e4e8;
+            position: relative;
         }
         .diff-line-content {
             padding: 0 8px;
             white-space: pre;
         }
+        /* Updated diff colors for better accessibility */
         .diff-added {
-            background-color: #e6ffec;
+            background-color: rgba(40, 167, 69, 0.15);
         }
         .diff-added .diff-sign {
-            background-color: #ccffd8;
+            background-color: rgba(40, 167, 69, 0.2);
             color: #28a745;
         }
         .diff-removed {
-            background-color: #ffebe9;
+            background-color: rgba(220, 53, 69, 0.15);
         }
         .diff-removed .diff-sign {
-            background-color: #ffd7d5;
+            background-color: rgba(220, 53, 69, 0.2);
             color: #d73a49;
         }
         .diff-context {
@@ -525,12 +527,13 @@ class GitCommitReviewGenerator:
             color: #586069;
             font-style: italic;
         }
+        /* Updated scan result styling */
         .scan-result-content {
-            background-color: #fff8e1;
+            background-color: rgba(255, 193, 7, 0.15);
             padding: 8px !important;
         }
         .scan-result-content.severe {
-            background-color: #ffebee;
+            background-color: rgba(220, 53, 69, 0.15);
         }
         .scan-result-description {
             margin-bottom: 4px;
@@ -541,12 +544,31 @@ class GitCommitReviewGenerator:
             font-style: italic;
             font-size: 12px;
         }
+        /* Add severity badge to line number */
+        .diff-line-num::after {
+            content: '';
+            position: absolute;
+            right: 4px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            display: none;
+        }
+        .scan-result .diff-line-num::after {
+            display: block;
+            background-color: #ffc107;
+        }
+        .scan-result.severe .diff-line-num::after {
+            background-color: #dc3545;
+        }
         .scan-result-highlight {
             animation: scanresultflash 1.2s;
-            background: #ffe082 !important;
+            background: rgba(255, 193, 7, 0.3) !important;
         }
         @keyframes scanresultflash {
-            0% { background: #ffe082; }
+            0% { background: rgba(255, 193, 7, 0.3); }
             100% { background: inherit; }
         }
         .footer {
@@ -639,6 +661,7 @@ class GitCommitReviewGenerator:
             border-bottom: 1px solid #e1e4e8;
         }
         """
+        
         css_path = os.path.join(self.assets_dir, 'style.css')
         with open(css_path, 'w', encoding='utf-8') as f:
             f.write(css_content)
