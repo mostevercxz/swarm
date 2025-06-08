@@ -829,10 +829,24 @@ class GitCommitReviewGenerator:
                         }
                     }
 
-                    // Hide hunk headers when all context has been expanded
-                    if (!table.querySelector('.expand-row')) {
-                        table.querySelectorAll('.diff-hunk-header').forEach(row => row.style.display = 'none');
+                    // Hide hunk headers once their surrounding context is visible
+                    function maybeHideHunkHeaders() {
+                        table.querySelectorAll('.diff-hunk-header').forEach(function(header) {
+                            let hasExpandAround = false;
+                            let prev = header.previousElementSibling;
+                            while (prev && !prev.classList.contains('diff-hunk-header')) {
+                                if (prev.classList.contains('expand-row')) { hasExpandAround = true; break; }
+                                prev = prev.previousElementSibling;
+                            }
+                            let next = header.nextElementSibling;
+                            while (!hasExpandAround && next && !next.classList.contains('diff-hunk-header')) {
+                                if (next.classList.contains('expand-row')) { hasExpandAround = true; break; }
+                                next = next.nextElementSibling;
+                            }
+                            if (!hasExpandAround) header.style.display = 'none';
+                        });
                     }
+                    maybeHideHunkHeaders();
                 });
             });
             function escapeHtml(text) {
