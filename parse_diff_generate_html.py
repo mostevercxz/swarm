@@ -703,7 +703,7 @@ class GitCommitReviewGenerator:
                     let insertionPoint = null;
                     let rows = Array.from(table.tBodies[0].rows);
                     gitDiffLog(`Total rows in table: ${rows.length}`);
-                    
+
                     for (let i = 0; i < rows.length; i++) {
                         let row = rows[i];
                         let lineNumCells = row.querySelectorAll('.diff-line-num');
@@ -724,8 +724,15 @@ class GitCommitReviewGenerator:
                             gitDiffLog(`Row ${i}: no line number cells (${row.className})`);
                         }
                     }
-                    
-                    // If no insertion point found, insert before the button row
+
+                    // For expanding above, insert before the button row so context appears before the hunk header
+                    // For expanding below, insert after the button row
+                    if (expandType.startsWith('above')) {
+                        insertionPoint = tr;
+                    } else if (expandType.startsWith('below')) {
+                        insertionPoint = tr.nextSibling;
+                    }
+                    // Fallback if insertion point is still null
                     if (!insertionPoint) {
                         insertionPoint = tr;
                         gitDiffLog(`No insertion point found, using button row as insertion point`);
