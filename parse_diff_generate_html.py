@@ -712,15 +712,15 @@ class GitCommitReviewGenerator:
             }
             // Expandable context logic
             const fileContents = JSON.parse(document.getElementById('new-file-contents').textContent);
-            document.querySelectorAll('.expand-icon').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    const tr = btn.closest('tr');
-                    const table = btn.closest('table');
-                    const filename = table.getAttribute('data-filename');
-                    const lines = fileContents[filename] || [];
-                    let expandType = btn.getAttribute('data-expand');
-                    let contextStart = parseInt(btn.getAttribute('data-context-start'));
-                    let contextEnd = parseInt(btn.getAttribute('data-context-end'));
+            function handleExpandClick(e) {
+                const btn = e.currentTarget;
+                const tr = btn.closest('tr');
+                const table = btn.closest('table');
+                const filename = table.getAttribute('data-filename');
+                const lines = fileContents[filename] || [];
+                let expandType = btn.getAttribute('data-expand');
+                let contextStart = parseInt(btn.getAttribute('data-context-start'));
+                let contextEnd = parseInt(btn.getAttribute('data-context-end'));
                     
                     // Handle 10-line expansion
                     if (expandType === 'above-10') {
@@ -884,7 +884,7 @@ class GitCommitReviewGenerator:
                             newBtnRow.className = 'expand-row';
                             newBtnRow.innerHTML = `<td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content'><button class='expand-icon' data-expand='above-10' data-context-start='${nextStart}' data-context-end='${nextEnd}' title='向上10行'>▲10</button> <button class='expand-icon' data-expand='above' data-context-start='${nextStart}' data-context-end='${nextEnd}' title='向上到上一个diff块'>▲</button></td>`;
                             table.tBodies[0].insertBefore(newBtnRow, insertedRows[0]);
-                            newBtnRow.querySelectorAll('.expand-icon').forEach(newBtn => newBtn.addEventListener('click', arguments.callee));
+                            newBtnRow.querySelectorAll('.expand-icon').forEach(newBtn => newBtn.addEventListener('click', handleExpandClick));
                         }
                     }
                     if (expandType === 'below' && contextEnd < lines.length) {
@@ -901,7 +901,7 @@ class GitCommitReviewGenerator:
                             } else {
                                 table.tBodies[0].appendChild(newBtnRow);
                             }
-                            newBtnRow.querySelectorAll('.expand-icon').forEach(newBtn => newBtn.addEventListener('click', arguments.callee));
+                            newBtnRow.querySelectorAll('.expand-icon').forEach(newBtn => newBtn.addEventListener('click', handleExpandClick));
                         }
                     }
 
@@ -944,7 +944,10 @@ class GitCommitReviewGenerator:
                         gitDiffLog('maybeHideHunkHeaders end');
                     }
                     maybeHideHunkHeaders();
-                });
+                }
+            });
+            document.querySelectorAll('.expand-icon').forEach(function(btn) {
+                btn.addEventListener('click', handleExpandClick);
             });
             function escapeHtml(text) {
                 var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
