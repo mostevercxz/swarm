@@ -637,14 +637,16 @@ class GitCommitReviewGenerator:
             // Expandable context logic
             const fileContents = JSON.parse(document.getElementById('new-file-contents').textContent);
             document.querySelectorAll('.expand-icon').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    const tr = btn.closest('tr');
-                    const table = btn.closest('table');
+                btn.addEventListener('click', function(event) {
+                    const clickedBtn = event.currentTarget;
+                    gitDiffLog(`Button dataset: expand=${clickedBtn.getAttribute('data-expand')} start=${clickedBtn.getAttribute('data-context-start')} end=${clickedBtn.getAttribute('data-context-end')}`);
+                    const tr = clickedBtn.closest('tr');
+                    const table = clickedBtn.closest('table');
                     const filename = table.getAttribute('data-filename');
                     const lines = fileContents[filename] || [];
-                    let expandType = btn.getAttribute('data-expand');
-                    let contextStart = parseInt(btn.getAttribute('data-context-start'));
-                    let contextEnd = parseInt(btn.getAttribute('data-context-end'));
+                    let expandType = clickedBtn.getAttribute('data-expand');
+                    let contextStart = parseInt(clickedBtn.getAttribute('data-context-start'));
+                    let contextEnd = parseInt(clickedBtn.getAttribute('data-context-end'));
                     
                     // Handle 10-line expansion
                     if (expandType === 'above-10') {
@@ -763,31 +765,35 @@ class GitCommitReviewGenerator:
                         }
                     });
                     gitDiffLog(`Final visible lines: [${Array.from(finalVisibleLines).sort((a,b) => a-b).join(', ')}]`);
+                    gitDiffLog(`Total expand rows after insertion: ${table.querySelectorAll('.expand-row').length}`);
                     gitDiffLog(`===== EXPAND COMPLETE =====`);
                     
                     // For 10-line expansions, update the button range and keep it
                     if (expandType.endsWith('-10')) {
-                        let originalStart = parseInt(btn.getAttribute('data-context-start'));
-                        let originalEnd = parseInt(btn.getAttribute('data-context-end'));
+                        let originalStart = parseInt(clickedBtn.getAttribute('data-context-start'));
+                        let originalEnd = parseInt(clickedBtn.getAttribute('data-context-end'));
                         
                         if (expandType === 'above-10') {
                             let newEnd = contextStart - 1;
                             if (newEnd >= originalStart) {
-                                btn.setAttribute('data-context-end', newEnd);
+                                clickedBtn.setAttribute('data-context-end', newEnd);
                             } else {
                                 tr.remove();
+                                gitDiffLog('Removed button row after above-10 expansion');
                             }
                         } else if (expandType === 'below-10') {
                             let newStart = contextEnd + 1;
                             if (newStart <= originalEnd) {
-                                btn.setAttribute('data-context-start', newStart);
+                                clickedBtn.setAttribute('data-context-start', newStart);
                             } else {
                                 tr.remove();
+                                gitDiffLog('Removed button row after below-10 expansion');
                             }
                         }
                     } else {
                         // Remove the old button row for full expansion
                         tr.remove();
+                        gitDiffLog('Removed button row after full expansion');
                     }
                     // Only insert a new button if there are still hidden lines in the next range (for full expansion only)
                     function hasHiddenLines(start, end) {
@@ -812,6 +818,7 @@ class GitCommitReviewGenerator:
                         let nextStart = Math.max(1, contextStart - linesPerExpand);
                         let nextEnd = contextStart - 1;
                         if (nextStart <= nextEnd && hasHiddenLines(nextStart, nextEnd)) {
+                            gitDiffLog(`Adding new \"expand above\" button: ${nextStart}-${nextEnd}`);
                             let newBtnRow = document.createElement('tr');
                             newBtnRow.className = 'expand-row';
                             newBtnRow.innerHTML = `<td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content'><button class='expand-icon' data-expand='above-10' data-context-start='${nextStart}' data-context-end='${nextEnd}' title='向上10行'>▲10</button> <button class='expand-icon' data-expand='above' data-context-start='${nextStart}' data-context-end='${nextEnd}' title='向上到上一个diff块'>▲</button></td>`;
@@ -824,6 +831,7 @@ class GitCommitReviewGenerator:
                         let nextStart = contextEnd + 1;
                         let nextEnd = Math.min(lines.length, contextEnd + linesPerExpand);
                         if (nextStart <= nextEnd && hasHiddenLines(nextStart, nextEnd)) {
+                            gitDiffLog(`Adding new \"expand below\" button: ${nextStart}-${nextEnd}`);
                             let newBtnRow = document.createElement('tr');
                             newBtnRow.className = 'expand-row';
                             newBtnRow.innerHTML = `<td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content'><button class='expand-icon' data-expand='below-10' data-context-start='${nextStart}' data-context-end='${nextEnd}' title='向下10行'>▼10</button> <button class='expand-icon' data-expand='below' data-context-start='${nextStart}' data-context-end='${nextEnd}' title='Show more below'>▼</button></td>`;
