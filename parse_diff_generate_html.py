@@ -397,6 +397,7 @@ class GitCommitReviewGenerator:
             padding: 8px;
             border-bottom: 1px solid #e1e4e8;
             font-size: 12px;
+            cursor: pointer;
         }
         .scan-result-item:last-child {
             border-bottom: none;
@@ -540,6 +541,14 @@ class GitCommitReviewGenerator:
             font-style: italic;
             font-size: 12px;
         }
+        .scan-result-highlight {
+            animation: scanresultflash 1.2s;
+            background: #ffe082 !important;
+        }
+        @keyframes scanresultflash {
+            0% { background: #ffe082; }
+            100% { background: inherit; }
+        }
         .footer {
             margin-top: 40px;
             text-align: center;
@@ -668,6 +677,18 @@ class GitCommitReviewGenerator:
                     const diffElem = document.getElementById(diffId);
                     if (diffElem) {
                         diffElem.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                });
+            });
+            // Scan result panel click to jump to code line
+            document.querySelectorAll('.scan-result-item[data-jump]').forEach(function(item) {
+                item.addEventListener('click', function() {
+                    const jumpId = item.getAttribute('data-jump');
+                    const codeElem = document.getElementById(jumpId);
+                    if (codeElem) {
+                        codeElem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        codeElem.classList.add('scan-result-highlight');
+                        setTimeout(() => codeElem.classList.remove('scan-result-highlight'), 1600);
                     }
                 });
             });
@@ -1019,9 +1040,12 @@ class GitCommitReviewGenerator:
         # Add scan results to the panel
         for result in scan_results:
             severity_class = 'severe' if result['严重程度'] == '严重' else ''
+            safe_filename = result['文件名'].replace('/', '-').replace('\\', '-').replace('.', '-')
+            jump_id = f"scanresult-{safe_filename}-{result['行号']}"
             html_content += f'''
-                <div class="scan-result-item {severity_class}" data-line="{result['行号']}">
+                <div class="scan-result-item {severity_class}" data-line="{result['行号']}" data-jump="{jump_id}">
                     <div class="line-number">Line {result['行号']}</div>
+                    <div class="file-name">文件名: {html.escape(result['文件名'])}</div>
                     <div class="description">{html.escape(result['问题描述'])}</div>
                     <div class="suggestion">{html.escape(result['修改意见'])}</div>
                 </div>
@@ -1136,7 +1160,9 @@ class GitCommitReviewGenerator:
                 if scan_line_num is not None and scan_line_num not in inserted_scan_lines:
                     scan_result = next((r for r in scan_results if str(r['行号']) == str(scan_line_num) and r['文件名'] == filename), None)
                     if scan_result:
-                        html_lines.append("<tr class='scan-result'>")
+                        safe_filename = filename.replace('/', '-').replace('\\', '-').replace('.', '-')
+                        jump_id = f"scanresult-{safe_filename}-{scan_line_num}"
+                        html_lines.append(f"<tr class='scan-result' id='{jump_id}'>")
                         html_lines.append("<td class='diff-sign'></td>")
                         html_lines.append("<td class='diff-line-num'></td>")
                         html_lines.append("<td class='diff-line-num'></td>")
