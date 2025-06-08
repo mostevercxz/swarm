@@ -828,6 +828,11 @@ class GitCommitReviewGenerator:
                             newBtnRow.querySelectorAll('.expand-icon').forEach(newBtn => newBtn.addEventListener('click', arguments.callee));
                         }
                     }
+
+                    // Hide hunk headers when all context has been expanded
+                    if (!table.querySelector('.expand-row')) {
+                        table.querySelectorAll('.diff-hunk-header').forEach(row => row.style.display = 'none');
+                    }
                 });
             });
             function escapeHtml(text) {
