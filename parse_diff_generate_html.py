@@ -1119,6 +1119,49 @@ class GitCommitReviewGenerator:
         html_lines.append(f"<table class='diff-table' data-filename='{html.escape(filename)}' data-file-idx='{file_idx}'>")
         prev_hunk_end = 0
         i = 0
+        covered_lines = set()
+        # Mark all lines covered by hunks
+        for hunk in hunk_infos:
+            for ln in range(hunk['new_start'], hunk['new_start'] + hunk['new_count']):
+                covered_lines.add(ln)
+        # Find scan result lines not covered by hunks
+        scan_lines = [int(r['行号']) for r in scan_results if r['文件名'] == filename]
+        extra_context_blocks = []
+        for scan_line in scan_lines:
+            if scan_line not in covered_lines:
+                # [-10, +10] range, clamp to file
+                start = max(1, scan_line - 10)
+                end = min(len(full_lines), scan_line + 10)
+                extra_context_blocks.append((start, end, scan_line))
+        # Merge overlapping/adjacent blocks
+        extra_context_blocks.sort()
+        merged_blocks = []
+        for block in extra_context_blocks:
+            if not merged_blocks:
+                merged_blocks.append(list(block))
+            else:
+                last = merged_blocks[-1]
+                if block[0] <= last[1] + 1:
+                    last[1] = max(last[1], block[1])
+                else:
+                    merged_blocks.append(list(block))
+        # Render all merged scan context blocks before normal hunks
+        rendered_scan_lines = set()
+        for start, end, _ in merged_blocks:
+            html_lines.append(f"<tr class='scan-context'><td colspan='4'><span class='scan-context-label'>Scan Result Context [{start}-{end}]</span></td></tr>")
+            for ln in range(start, end + 1):
+                safe_filename = filename.replace('/', '-').replace('\\', '-').replace('.', '-')
+                scan_result = next((r for r in scan_results if str(r['行号']) == str(ln) and r['文件名'] == filename), None)
+                jump_id = f"scanresult-{safe_filename}-{ln}" if scan_result else ''
+                tr_id = f" id='{jump_id}'" if jump_id else ''
+                scan_class = 'scan-result-context' + (' severe' if scan_result and scan_result['严重程度'] == '严重' else '')
+                if scan_result and ln not in rendered_scan_lines:
+                    html_lines.append(f"<tr class='scan-result {scan_class}'{tr_id}><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'>{ln}</td><td class='diff-line-content scan-result-content'><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
+                    rendered_scan_lines.add(ln)
+                else:
+                    content = full_lines[ln-1] if 0 <= ln-1 < len(full_lines) else ''
+                    html_lines.append(f"<tr class='diff-context scan-context'><td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>{ln}</td><td class='diff-line-content'>{html.escape(content)}</td></tr>")
+        # Now render the normal diff hunks as before
         for hunk_idx, hunk in enumerate(hunk_infos):
             hunk_start = hunk['new_start']
             hunk_count = hunk['new_count']
@@ -1162,13 +1205,7 @@ class GitCommitReviewGenerator:
                     if scan_result:
                         safe_filename = filename.replace('/', '-').replace('\\', '-').replace('.', '-')
                         jump_id = f"scanresult-{safe_filename}-{scan_line_num}"
-                        html_lines.append(f"<tr class='scan-result' id='{jump_id}'>")
-                        html_lines.append("<td class='diff-sign'></td>")
-                        html_lines.append("<td class='diff-line-num'></td>")
-                        html_lines.append("<td class='diff-line-num'></td>")
-                        severity_class = 'severe' if scan_result['严重程度'] == '严重' else ''
-                        html_lines.append(f"<td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td>")
-                        html_lines.append("</tr>")
+                        html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {'severe' if scan_result['严重程度'] == '严重' else ''}'><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
                         inserted_scan_lines.add(scan_line_num)
                 if l.startswith('+'):
                     html_lines.append("<tr class='diff-added'>")
