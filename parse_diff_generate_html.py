@@ -917,7 +917,7 @@ class GitCommitReviewGenerator:
                         if (nextStart <= nextEnd && hasHiddenLines(nextStart, nextEnd)) {
                             let newBtnRow = document.createElement('tr');
                             newBtnRow.className = 'expand-row';
-                            newBtnRow.innerHTML = `<td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content'><button class='expand-icon' data-expand='below-10' data-context-start='${nextStart}' data-context-end='${nextEnd}' title='向下10行'>▼10</button> <button class='expand-icon' data-expand='below' data-context-start='${nextStart}' data-context-end='${nextEnd}' title='Show more below'>▼</button></td>`;
+                            newBtnRow.innerHTML = `<td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content'><button class='expand-icon' data-expand='below-10' data-context-start='${nextStart}' data-context-end='${nextEnd}' title='向下10行'>▼10</button> <button class='expand-icon' data-expand='below' data-context-start='${nextStart}' data-context-end='${nextEnd}' title='向下到下一个diff块'>▼</button></td>`;
                             let insertAfter = insertedRows[insertedRows.length - 1];
                             if (insertAfter && insertAfter.nextSibling) {
                                 table.tBodies[0].insertBefore(newBtnRow, insertAfter.nextSibling);
@@ -1270,7 +1270,7 @@ class GitCommitReviewGenerator:
             context_end = len(full_lines)
             if context_start <= context_end:
                 html_lines.append(
-                    f"<tr class='expand-row'><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content'><button class='expand-icon' data-expand='below-10' data-context-start='{context_start}' data-context-end='{context_end}' title='向下10行'>▼10</button> <button class='expand-icon' data-expand='below' data-context-start='{context_start}' data-context-end='{context_end}' title='Show more below'>▼</button></td></tr>"
+                    f"<tr class='expand-row'><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content'><button class='expand-icon' data-expand='below-10' data-context-start='{context_start}' data-context-end='{context_end}' title='向下10行'>▼10</button> <button class='expand-icon' data-expand='below' data-context-start='{context_start}' data-context-end='{context_end}' title='向下到下一个diff块'>▼</button></td></tr>"
                 )
         html_lines.append("</table>")
         html_lines.append("</div>")
