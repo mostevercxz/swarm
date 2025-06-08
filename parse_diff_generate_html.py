@@ -558,8 +558,19 @@ class GitCommitReviewGenerator:
         .expand-btn:hover {
             background-color: #e1e4e8;
         }
+        .expand-icon {
+            background: none;
+            border: none;
+            color: #586069;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 0 2px;
+        }
+        .expand-icon:hover {
+            color: #0366d6;
+        }
         .expand-row td {
-            padding: 8px;
+            padding: 2px 4px;
             background-color: #f6f8fa;
             border-bottom: 1px solid #e1e4e8;
         }
@@ -625,7 +636,7 @@ class GitCommitReviewGenerator:
             }
             // Expandable context logic
             const fileContents = JSON.parse(document.getElementById('new-file-contents').textContent);
-            document.querySelectorAll('.expand-btn').forEach(function(btn) {
+            document.querySelectorAll('.expand-icon').forEach(function(btn) {
                 btn.addEventListener('click', function() {
                     const tr = btn.closest('tr');
                     const table = btn.closest('table');
@@ -795,9 +806,9 @@ class GitCommitReviewGenerator:
                         if (nextStart <= nextEnd && hasHiddenLines(nextStart, nextEnd)) {
                             let newBtnRow = document.createElement('tr');
                             newBtnRow.className = 'expand-row';
-                            newBtnRow.innerHTML = `<td colspan='4'><button class='expand-btn' data-expand='above-10' data-context-start='${nextStart}' data-context-end='${nextEnd}'>Show 10 lines above</button> <button class='expand-btn' data-expand='above' data-context-start='${nextStart}' data-context-end='${nextEnd}'>Show more above</button></td>`;
+                            newBtnRow.innerHTML = `<td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'><button class='expand-icon' data-expand='above-10' data-context-start='${nextStart}' data-context-end='${nextEnd}' title='Show 10 lines above'>▲10</button> <button class='expand-icon' data-expand='above' data-context-start='${nextStart}' data-context-end='${nextEnd}' title='Show more above'>▲</button></td><td class='diff-line-content'></td>`;
                             table.tBodies[0].insertBefore(newBtnRow, insertedRows[0]);
-                            newBtnRow.querySelectorAll('.expand-btn').forEach(newBtn => newBtn.addEventListener('click', arguments.callee));
+                            newBtnRow.querySelectorAll('.expand-icon').forEach(newBtn => newBtn.addEventListener('click', arguments.callee));
                         }
                     }
                     if (expandType === 'below' && contextEnd < lines.length) {
@@ -807,14 +818,14 @@ class GitCommitReviewGenerator:
                         if (nextStart <= nextEnd && hasHiddenLines(nextStart, nextEnd)) {
                             let newBtnRow = document.createElement('tr');
                             newBtnRow.className = 'expand-row';
-                            newBtnRow.innerHTML = `<td colspan='4'><button class='expand-btn' data-expand='below-10' data-context-start='${nextStart}' data-context-end='${nextEnd}'>Show 10 lines below</button> <button class='expand-btn' data-expand='below' data-context-start='${nextStart}' data-context-end='${nextEnd}'>Show more below</button></td>`;
+                            newBtnRow.innerHTML = `<td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'><button class='expand-icon' data-expand='below-10' data-context-start='${nextStart}' data-context-end='${nextEnd}' title='Show 10 lines below'>▼10</button> <button class='expand-icon' data-expand='below' data-context-start='${nextStart}' data-context-end='${nextEnd}' title='Show more below'>▼</button></td><td class='diff-line-content'></td>`;
                             let insertAfter = insertedRows[insertedRows.length - 1];
                             if (insertAfter && insertAfter.nextSibling) {
                                 table.tBodies[0].insertBefore(newBtnRow, insertAfter.nextSibling);
                             } else {
                                 table.tBodies[0].appendChild(newBtnRow);
                             }
-                            newBtnRow.querySelectorAll('.expand-btn').forEach(newBtn => newBtn.addEventListener('click', arguments.callee));
+                            newBtnRow.querySelectorAll('.expand-icon').forEach(newBtn => newBtn.addEventListener('click', arguments.callee));
                         }
                     }
                 });
@@ -975,7 +986,9 @@ class GitCommitReviewGenerator:
                 if context_start <= context_end:
                     # All gaps between hunks should be "Show more above" since they appear above the next hunk
                     # Show both 10-line and full expansion buttons
-                    html_lines.append(f"<tr class='expand-row'><td colspan='4'><button class='expand-btn' data-expand='above-10' data-context-start='{context_start}' data-context-end='{context_end}'>Show 10 lines above</button> <button class='expand-btn' data-expand='above' data-context-start='{context_start}' data-context-end='{context_end}'>Show more above</button></td></tr>")
+                    html_lines.append(
+                        f"<tr class='expand-row'><td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'><button class='expand-icon' data-expand='above-10' data-context-start='{context_start}' data-context-end='{context_end}' title='Show 10 lines above'>▲10</button> <button class='expand-icon' data-expand='above' data-context-start='{context_start}' data-context-end='{context_end}' title='Show more above'>▲</button></td><td class='diff-line-content'></td></tr>"
+                    )
             # Render hunk header
             hunk_header_line = lines[hunk['diff_idx']]
             html_lines.append(f"<tr class='diff-hunk-header'><td colspan='4'>{html.escape(hunk_header_line)}</td></tr>")
@@ -1029,7 +1042,9 @@ class GitCommitReviewGenerator:
             context_start = prev_hunk_end + 1
             context_end = len(full_lines)
             if context_start <= context_end:
-                html_lines.append(f"<tr class='expand-row'><td colspan='4'><button class='expand-btn' data-expand='below-10' data-context-start='{context_start}' data-context-end='{context_end}'>Show 10 lines below</button> <button class='expand-btn' data-expand='below' data-context-start='{context_start}' data-context-end='{context_end}'>Show more below</button></td></tr>")
+                html_lines.append(
+                    f"<tr class='expand-row'><td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'><button class='expand-icon' data-expand='below-10' data-context-start='{context_start}' data-context-end='{context_end}' title='Show 10 lines below'>▼10</button> <button class='expand-icon' data-expand='below' data-context-start='{context_start}' data-context-end='{context_end}' title='Show more below'>▼</button></td><td class='diff-line-content'></td></tr>"
+                )
         html_lines.append("</table>")
         html_lines.append("</div>")
         return "\n".join(html_lines), hunk_meta
