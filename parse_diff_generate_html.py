@@ -725,12 +725,13 @@ class GitCommitReviewGenerator:
                         }
                     }
 
-                    // For expanding above, insert before the button row so context appears before the hunk header
-                    // For expanding below, insert after the button row
+                    // Place the new context relative to the button row
+                    //   above  -> between the button and the hunk header
+                    //   below  -> directly above the button row
                     if (expandType.startsWith('above')) {
-                        insertionPoint = tr;
+                        insertionPoint = tr.nextSibling;  // header follows the button
                     } else if (expandType.startsWith('below')) {
-                        insertionPoint = tr.nextSibling;
+                        insertionPoint = tr;  // insert before the button
                     }
                     // Fallback if insertion point is still null
                     if (!insertionPoint) {
