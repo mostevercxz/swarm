@@ -240,6 +240,7 @@ class GitCommitReviewGenerator:
                 html_lines.append("<td class='diff-line-num'></td>")
                 html_lines.append(f"<td class='diff-line-content'>{html.escape(line[1:])}</td>")
                 html_lines.append("</tr>")
+                old_line_num += 1
             elif line.startswith(' '):
                 # Context line
                 html_lines.append("<tr class='diff-context'>")
