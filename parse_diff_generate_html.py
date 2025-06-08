@@ -377,6 +377,45 @@ class GitCommitReviewGenerator:
             z-index: 2;
             background: #f5f5f5;
         }
+        .scan-results-panel {
+            width: 20%;
+            min-width: 200px;
+            position: sticky;
+            top: 0;
+            align-self: flex-start;
+            z-index: 2;
+            background: #f5f5f5;
+            padding: 0 10px;
+        }
+        .scan-results-list {
+            background-color: #fff;
+            border: 1px solid #e1e4e8;
+            border-radius: 3px;
+            margin-bottom: 20px;
+        }
+        .scan-result-item {
+            padding: 8px;
+            border-bottom: 1px solid #e1e4e8;
+            font-size: 12px;
+        }
+        .scan-result-item:last-child {
+            border-bottom: none;
+        }
+        .scan-result-item.severe {
+            background-color: #ffebee;
+        }
+        .scan-result-item .line-number {
+            color: #586069;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .scan-result-item .description {
+            margin-bottom: 4px;
+        }
+        .scan-result-item .suggestion {
+            color: #586069;
+            font-style: italic;
+        }
         .file-list {
             background-color: #fff;
             border: 1px solid #e1e4e8;
@@ -484,6 +523,22 @@ class GitCommitReviewGenerator:
             padding: 16px;
             color: #586069;
             font-style: italic;
+        }
+        .scan-result-content {
+            background-color: #fff8e1;
+            padding: 8px !important;
+        }
+        .scan-result-content.severe {
+            background-color: #ffebee;
+        }
+        .scan-result-description {
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+        .scan-result-suggestion {
+            color: #586069;
+            font-style: italic;
+            font-size: 12px;
         }
         .footer {
             margin-top: 40px;
@@ -914,6 +969,15 @@ class GitCommitReviewGenerator:
                     new_file_contents[filename] = f.read().splitlines()
             except Exception:
                 new_file_contents[filename] = []
+
+        # Load scan results
+        scan_results = []
+        try:
+            with open('scan_results.json', 'r', encoding='utf-8') as f:
+                scan_results = json.load(f)
+        except Exception:
+            pass
+
         # Generate HTML
         html_content = f'''<!DOCTYPE html>
 <html lang="en">
@@ -949,13 +1013,29 @@ class GitCommitReviewGenerator:
                 {self._render_file_tree(file_tree)}
             </div>
         </div>
+        <div class="scan-results-panel">
+            <div class="scan-results-list">
+'''
+        # Add scan results to the panel
+        for result in scan_results:
+            severity_class = 'severe' if result['严重程度'] == '严重' else ''
+            html_content += f'''
+                <div class="scan-result-item {severity_class}" data-line="{result['行号']}">
+                    <div class="line-number">Line {result['行号']}</div>
+                    <div class="description">{html.escape(result['问题描述'])}</div>
+                    <div class="suggestion">{html.escape(result['修改意见'])}</div>
+                </div>
+'''
+        html_content += '''
+            </div>
+        </div>
         <div class="diff-panel">
 '''
         # Add all diffs (all visible, each with anchor)
         for i, file_info in enumerate(commit_info['files_changed']):
             filename = file_info['filename']
             diff_text = self.get_file_diff(commit_hash, filename)
-            diff_html, hunk_meta = self.parse_diff_to_html_with_expand(diff_text, filename, i)
+            diff_html, hunk_meta = self.parse_diff_to_html_with_expand(diff_text, filename, i, scan_results)
             html_content += f'''
             <div id="diff-{i}" class="diff-container">
                 <div class="diff-header">
@@ -982,7 +1062,7 @@ class GitCommitReviewGenerator:
             f.write(html_content)
         return output_file
     
-    def parse_diff_to_html_with_expand(self, diff_text, filename, file_idx):
+    def parse_diff_to_html_with_expand(self, diff_text, filename, file_idx, scan_results):
         """
         Like parse_diff_to_html, but adds expandable context controls and returns hunk metadata for JS.
         Renders collapsed context blocks for lines not included in the diff, so hunk headers and diff lines appear at the correct file line numbers.
@@ -1041,8 +1121,29 @@ class GitCommitReviewGenerator:
             if match:
                 cur_old = int(match.group('old_start'))
             j = hunk['diff_idx'] + 1
+            # Track which line numbers have already had scan results inserted for this hunk
+            inserted_scan_lines = set()
             while j < len(lines) and (not lines[j].startswith('@@')):
                 l = lines[j]
+                # For each line, check if a scan result should be shown (for this filename and line number)
+                scan_line_num = None
+                if l.startswith('+'):
+                    scan_line_num = cur_new
+                elif l.startswith('-'):
+                    scan_line_num = cur_old
+                elif l.startswith(' '):
+                    scan_line_num = cur_new
+                if scan_line_num is not None and scan_line_num not in inserted_scan_lines:
+                    scan_result = next((r for r in scan_results if str(r['行号']) == str(scan_line_num) and r['文件名'] == filename), None)
+                    if scan_result:
+                        html_lines.append("<tr class='scan-result'>")
+                        html_lines.append("<td class='diff-sign'></td>")
+                        html_lines.append("<td class='diff-line-num'></td>")
+                        html_lines.append("<td class='diff-line-num'></td>")
+                        severity_class = 'severe' if scan_result['严重程度'] == '严重' else ''
+                        html_lines.append(f"<td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td>")
+                        html_lines.append("</tr>")
+                        inserted_scan_lines.add(scan_line_num)
                 if l.startswith('+'):
                     html_lines.append("<tr class='diff-added'>")
                     html_lines.append("<td class='diff-sign'>+</td>")
