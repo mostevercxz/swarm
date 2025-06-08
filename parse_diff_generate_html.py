@@ -578,6 +578,13 @@ class GitCommitReviewGenerator:
         """
         js_content = """
         document.addEventListener('DOMContentLoaded', function() {
+            // Debug logging function
+            function gitDiffLog(...args) {
+                const debugLog = false; // Set to true for debugging
+                if (debugLog) {
+                    console.log(...args);
+                }
+            }
             // Folder expand/collapse
             document.querySelectorAll('.folder-label').forEach(function(label) {
                 label.addEventListener('click', function() {
@@ -636,38 +643,38 @@ class GitCommitReviewGenerator:
                     }
                     
                     // Insert the context lines, but only if not already present
-                    console.log(`===== EXPAND BUTTON CLICKED =====`);
-                    console.log(`Expand type: ${expandType}`);
-                    console.log(`Context range: ${contextStart} to ${contextEnd}`);
+                    gitDiffLog(`===== EXPAND BUTTON CLICKED =====`);
+                    gitDiffLog(`Expand type: ${expandType}`);
+                    gitDiffLog(`Context range: ${contextStart} to ${contextEnd}`);
                     
                     let insertedRows = [];
                     // Debug: Check HTML structure in detail
-                    console.log(`Table HTML (first 500 chars): ${table.innerHTML.substring(0, 500)}`);
+                    gitDiffLog(`Table HTML (first 500 chars): ${table.innerHTML.substring(0, 500)}`);
                     
                     let allLineNumCells = Array.from(table.querySelectorAll('.diff-line-num'));
-                    console.log(`Found ${allLineNumCells.length} line number cells`);
+                    gitDiffLog(`Found ${allLineNumCells.length} line number cells`);
                     allLineNumCells.slice(0, 10).forEach((cell, i) => {
-                        console.log(`Line cell ${i}: "${cell.textContent}" (parent: ${cell.parentElement.className}) (innerHTML: "${cell.innerHTML}")`);
+                        gitDiffLog(`Line cell ${i}: "${cell.textContent}" (parent: ${cell.parentElement.className}) (innerHTML: "${cell.innerHTML}")`);
                     });
                     
                     let visibleLines = new Set();
                     let allRows = Array.from(table.querySelectorAll('tr'));
-                    console.log(`Total table rows: ${allRows.length}`);
+                    gitDiffLog(`Total table rows: ${allRows.length}`);
                     allRows.slice(0, 10).forEach((row, i) => {
                         let lineNumCells = row.querySelectorAll('.diff-line-num');
-                        console.log(`Row ${i} (${row.className}): ${lineNumCells.length} line cells`);
+                        gitDiffLog(`Row ${i} (${row.className}): ${lineNumCells.length} line cells`);
                         if (lineNumCells.length >= 2) {
                             let oldLineText = lineNumCells[0].textContent.trim();
                             let newLineText = lineNumCells[1].textContent.trim();
-                            console.log(`  Old line: "${oldLineText}", New line: "${newLineText}"`);
+                            gitDiffLog(`  Old line: "${oldLineText}", New line: "${newLineText}"`);
                             let newLineNum = parseInt(newLineText);
                             if (!isNaN(newLineNum) && newLineNum > 0) {
                                 visibleLines.add(newLineNum);
-                                console.log(`  Added line ${newLineNum} to visible set`);
+                                gitDiffLog(`  Added line ${newLineNum} to visible set`);
                             }
                         }
                     });
-                    console.log(`Currently visible lines: [${Array.from(visibleLines).sort((a,b) => a-b).join(', ')}]`);
+                    gitDiffLog(`Currently visible lines: [${Array.from(visibleLines).sort((a,b) => a-b).join(', ')}]`);
                     
                     // Collect all lines to insert first (skip already visible lines)
                     let linesToInsert = [];
@@ -676,15 +683,15 @@ class GitCommitReviewGenerator:
                             let content = lines[ln - 1] || '';
                             linesToInsert.push({lineNum: ln, content: content});
                         } else {
-                            console.log(`Skipping line ${ln} - already visible`);
+                            gitDiffLog(`Skipping line ${ln} - already visible`);
                         }
                     }
-                    console.log(`Lines to insert: [${linesToInsert.map(l => l.lineNum).join(', ')}]`);
+                    gitDiffLog(`Lines to insert: [${linesToInsert.map(l => l.lineNum).join(', ')}]`);
                     
                     // Find the insertion point for the entire block (before the first line with a higher number)
                     let insertionPoint = null;
                     let rows = Array.from(table.tBodies[0].rows);
-                    console.log(`Total rows in table: ${rows.length}`);
+                    gitDiffLog(`Total rows in table: ${rows.length}`);
                     
                     for (let i = 0; i < rows.length; i++) {
                         let row = rows[i];
@@ -693,35 +700,35 @@ class GitCommitReviewGenerator:
                             let newLineText = lineNumCells[1].textContent.trim();
                             let rowLineNum = parseInt(newLineText);
                             if (!isNaN(rowLineNum) && rowLineNum > 0) {
-                                console.log(`Row ${i}: line number ${rowLineNum}`);
+                                gitDiffLog(`Row ${i}: line number ${rowLineNum}`);
                                 if (rowLineNum > contextStart) {
                                     insertionPoint = row;
-                                    console.log(`Found insertion point at row ${i} (line ${rowLineNum})`);
+                                    gitDiffLog(`Found insertion point at row ${i} (line ${rowLineNum})`);
                                     break;
                                 }
                             } else {
-                                console.log(`Row ${i}: invalid line number "${newLineText}" (${row.className})`);
+                                gitDiffLog(`Row ${i}: invalid line number "${newLineText}" (${row.className})`);
                             }
                         } else {
-                            console.log(`Row ${i}: no line number cells (${row.className})`);
+                            gitDiffLog(`Row ${i}: no line number cells (${row.className})`);
                         }
                     }
                     
                     // If no insertion point found, insert before the button row
                     if (!insertionPoint) {
                         insertionPoint = tr;
-                        console.log(`No insertion point found, using button row as insertion point`);
+                        gitDiffLog(`No insertion point found, using button row as insertion point`);
                     }
                     
                     // Insert all lines as a block in the correct order
-                    console.log(`Inserting ${linesToInsert.length} lines...`);
+                    gitDiffLog(`Inserting ${linesToInsert.length} lines...`);
                     linesToInsert.forEach(function(lineInfo, index) {
                         let newRow = document.createElement('tr');
                         newRow.className = 'diff-context expanded-context';
                         newRow.innerHTML = `<td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>${lineInfo.lineNum}</td><td class='diff-line-content'>${escapeHtml(lineInfo.content)}</td>`;
                         table.tBodies[0].insertBefore(newRow, insertionPoint);
                         insertedRows.push(newRow);
-                        console.log(`Inserted line ${lineInfo.lineNum} (${index + 1}/${linesToInsert.length})`);
+                        gitDiffLog(`Inserted line ${lineInfo.lineNum} (${index + 1}/${linesToInsert.length})`);
                     });
                     
                     // Log final state (use same logic as before)
@@ -736,8 +743,8 @@ class GitCommitReviewGenerator:
                             }
                         }
                     });
-                    console.log(`Final visible lines: [${Array.from(finalVisibleLines).sort((a,b) => a-b).join(', ')}]`);
-                    console.log(`===== EXPAND COMPLETE =====`);
+                    gitDiffLog(`Final visible lines: [${Array.from(finalVisibleLines).sort((a,b) => a-b).join(', ')}]`);
+                    gitDiffLog(`===== EXPAND COMPLETE =====`);
                     
                     // For 10-line expansions, update the button range and keep it
                     if (expandType.endsWith('-10')) {
