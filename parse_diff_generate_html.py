@@ -591,7 +591,7 @@ class GitCommitReviewGenerator:
         document.addEventListener('DOMContentLoaded', function() {
             // Debug logging function
             function gitDiffLog(...args) {
-                const debugLog = false; // Set to true for debugging
+                const debugLog = true; // Set to true for debugging
                 if (debugLog) {
                     console.log(...args);
                 }
@@ -831,7 +831,10 @@ class GitCommitReviewGenerator:
 
                     // Hide hunk headers once their surrounding context is visible
                     function maybeHideHunkHeaders() {
-                        table.querySelectorAll('.diff-hunk-header').forEach(function(header) {
+                        gitDiffLog('maybeHideHunkHeaders start');
+                        table.querySelectorAll('.diff-hunk-header').forEach(function(header, idx) {
+                            let headerText = header.textContent.trim();
+                            gitDiffLog(`Checking header ${idx}: "${headerText}"`);
                             let hasExpandAround = false;
                             let prev = header.previousElementSibling;
                             while (prev && !prev.classList.contains('diff-hunk-header')) {
@@ -843,8 +846,15 @@ class GitCommitReviewGenerator:
                                 if (next.classList.contains('expand-row')) { hasExpandAround = true; break; }
                                 next = next.nextElementSibling;
                             }
-                            if (!hasExpandAround) header.style.display = 'none';
+                            gitDiffLog(`  expand rows around? ${hasExpandAround}`);
+                            if (!hasExpandAround) {
+                                gitDiffLog(`  hiding header: ${headerText}`);
+                                header.style.display = 'none';
+                            } else {
+                                gitDiffLog(`  keeping header: ${headerText}`);
+                            }
                         });
+                        gitDiffLog('maybeHideHunkHeaders end');
                     }
                     maybeHideHunkHeaders();
                 });
