@@ -832,22 +832,33 @@ class GitCommitReviewGenerator:
                     // Hide hunk headers once their surrounding context is visible
                     function maybeHideHunkHeaders() {
                         gitDiffLog('maybeHideHunkHeaders start');
+                        function getLineNum(row) {
+                            if (!row) return null;
+                            let cells = row.querySelectorAll('.diff-line-num');
+                            if (cells.length >= 2) {
+                                let txt = cells[1].textContent.trim();
+                                let num = parseInt(txt);
+                                return isNaN(num) ? null : num;
+                            }
+                            return null;
+                        }
+
                         table.querySelectorAll('.diff-hunk-header').forEach(function(header, idx) {
                             let headerText = header.textContent.trim();
                             gitDiffLog(`Checking header ${idx}: "${headerText}"`);
-                            let hasExpandAround = false;
+
                             let prev = header.previousElementSibling;
-                            while (prev && !prev.classList.contains('diff-hunk-header')) {
-                                if (prev.classList.contains('expand-row')) { hasExpandAround = true; break; }
-                                prev = prev.previousElementSibling;
-                            }
+                            while (prev && prev.classList.contains('expand-row')) prev = prev.previousElementSibling;
+                            while (prev && prev.classList.contains('diff-hunk-header')) prev = prev.previousElementSibling;
+
                             let next = header.nextElementSibling;
-                            while (!hasExpandAround && next && !next.classList.contains('diff-hunk-header')) {
-                                if (next.classList.contains('expand-row')) { hasExpandAround = true; break; }
-                                next = next.nextElementSibling;
-                            }
-                            gitDiffLog(`  expand rows around? ${hasExpandAround}`);
-                            if (!hasExpandAround) {
+                            while (next && next.classList.contains('expand-row')) next = next.nextElementSibling;
+                            while (next && next.classList.contains('diff-hunk-header')) next = next.nextElementSibling;
+
+                            let prevNum = getLineNum(prev);
+                            let nextNum = getLineNum(next);
+
+                            if (prevNum !== null && nextNum !== null && nextNum === prevNum + 1) {
                                 gitDiffLog(`  hiding header: ${headerText}`);
                                 header.style.display = 'none';
                             } else {
