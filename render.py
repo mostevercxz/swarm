@@ -570,7 +570,7 @@ class Render:
         document.addEventListener('DOMContentLoaded', function() {
             // Debug logging function
             function gitDiffLog(...args) {
-                const debugLog = false; // Set to true for debugging
+                const debugLog = true; // Set to true for debugging
                 if (debugLog) {
                     console.log(...args);
                 }
@@ -629,6 +629,7 @@ class Render:
             const fileContents = document.getElementById('new-file-contents');
             if (fileContents) {
                 const fileContentData = JSON.parse(fileContents.textContent);
+                gitDiffLog('File content data loaded:', Object.keys(fileContentData));
                 document.querySelectorAll('.expand-icon').forEach(function(btn) {
                     btn.addEventListener('click', function() {
                         const tr = btn.closest('tr');
@@ -638,6 +639,8 @@ class Render:
                         let expandType = btn.getAttribute('data-expand');
                         let contextStart = parseInt(btn.getAttribute('data-context-start'));
                         let contextEnd = parseInt(btn.getAttribute('data-context-end'));
+                        
+                        gitDiffLog(`File data for "${filename}": ${lines ? lines.length : 'NOT FOUND'} lines`);
                         
                         // Handle 10-line expansion
                         if (expandType === 'above-10') {
@@ -649,7 +652,10 @@ class Render:
                         // Insert the context lines, but only if not already present
                         gitDiffLog(`===== EXPAND BUTTON CLICKED =====`);
                         gitDiffLog(`Expand type: ${expandType}`);
-                        gitDiffLog(`Context range: ${contextStart} to ${contextEnd}`);
+                        gitDiffLog(`Original context range: ${btn.getAttribute('data-context-start')} to ${btn.getAttribute('data-context-end')}`);
+                        gitDiffLog(`Adjusted context range: ${contextStart} to ${contextEnd}`);
+                        gitDiffLog(`File: ${filename}`);
+                        gitDiffLog(`Total lines in file: ${lines.length}`);
                         
                         let insertedRows = [];
                         let visibleLines = new Set();
@@ -669,12 +675,17 @@ class Render:
                         
                         // Collect all lines to insert first (skip already visible lines)
                         let linesToInsert = [];
+                        gitDiffLog(`Collecting lines to insert from ${contextStart} to ${contextEnd}`);
                         for (let ln = contextStart; ln <= contextEnd; ++ln) {
                             if (!visibleLines.has(ln)) {
                                 let content = lines[ln - 1] || '';
+                                gitDiffLog(`Line ${ln}: "${content}" (array index: ${ln - 1})`);
                                 linesToInsert.push({lineNum: ln, content: content});
+                            } else {
+                                gitDiffLog(`Line ${ln}: SKIPPED (already visible)`);
                             }
                         }
+                        gitDiffLog(`Total lines to insert: ${linesToInsert.length}`);
                         
                         // Find the insertion point for the entire block
                         let insertionPoint = null;
@@ -704,10 +715,12 @@ class Render:
                         }
                         
                         // Insert all lines as a block in the correct order
+                        gitDiffLog(`Inserting ${linesToInsert.length} lines before insertion point`);
                         linesToInsert.forEach(function(lineInfo, index) {
                             let newRow = document.createElement('tr');
                             newRow.className = 'diff-context expanded-context';
                             newRow.innerHTML = `<td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>${lineInfo.lineNum}</td><td class='diff-line-content'>${escapeHtml(lineInfo.content)}</td>`;
+                            gitDiffLog(`Inserting line ${lineInfo.lineNum}: "${lineInfo.content}"`);
                             table.tBodies[0].insertBefore(newRow, insertionPoint);
                             insertedRows.push(newRow);
                         });

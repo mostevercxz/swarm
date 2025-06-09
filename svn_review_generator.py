@@ -534,27 +534,61 @@ class SVNRevisionReviewGenerator:
         
         # Preload new file contents for dynamic context
         new_file_contents = {}
+        print(f"\n===== LOADING FILE CONTENTS =====")
+        print(f"Repository path: {self.repo_path}")
+        print(f"Working copy root: {working_copy_root}")
+        
         for file_info in revision_info['files_changed']:
             filename = file_info['filename']
+            print(f"\nLoading content for: {filename}")
             try:
                 # Try to find the file in the working copy
-                # First try the exact path
-                file_path = os.path.join(self.repo_path, filename)
-                if not os.path.exists(file_path):
-                    # If not found, try to find it in the working copy root
-                    file_path = os.path.join(working_copy_root, filename)
-                    if not os.path.exists(file_path):
-                        # If still not found, try to find it in the trunk
-                        file_path = os.path.join(working_copy_root, 'trunk', filename)
+                # Handle the case where filename might have redundant path prefix
+                # e.g., if working_copy_root ends with 'src' and filename starts with 'src/'
+                potential_paths = []
                 
-                if os.path.exists(file_path):
+                # Try the exact path
+                potential_paths.append(os.path.join(self.repo_path, filename))
+                
+                # Try stripping common prefixes if they match the end of working copy root
+                for prefix in ['src/', 'source/', 'code/', 'trunk/']:
+                    if filename.startswith(prefix):
+                        stripped_filename = filename[len(prefix):]
+                        potential_paths.append(os.path.join(self.repo_path, stripped_filename))
+                        potential_paths.append(os.path.join(working_copy_root, stripped_filename))
+                
+                # Try with working copy root
+                potential_paths.append(os.path.join(working_copy_root, filename))
+                
+                # Try with trunk prefix
+                potential_paths.append(os.path.join(working_copy_root, 'trunk', filename))
+                
+                # Remove duplicates while preserving order
+                seen = set()
+                unique_paths = []
+                for path in potential_paths:
+                    normalized_path = os.path.normpath(path)
+                    if normalized_path not in seen:
+                        seen.add(normalized_path)
+                        unique_paths.append(path)
+                
+                file_path = None
+                for path in unique_paths:
+                    print(f"  Trying: {path} - {'EXISTS' if os.path.exists(path) else 'NOT FOUND'}")
+                    if os.path.exists(path):
+                        file_path = path
+                        break
+                
+                if file_path and os.path.exists(file_path):
                     with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-                        new_file_contents[filename] = f.read().splitlines()
+                        content_lines = f.read().splitlines()
+                        new_file_contents[filename] = content_lines
+                        print(f"  SUCCESS: Loaded {len(content_lines)} lines from {file_path}")
                 else:
-                    print(f"Warning: Could not find file {filename} in working copy")
+                    print(f"  FAILED: Could not find file {filename} in any location")
                     new_file_contents[filename] = []
             except Exception as e:
-                print(f"Error reading file {filename}:{file_path} {str(e)}")
+                print(f"  ERROR reading file {filename} from {file_path}: {str(e)}")
                 new_file_contents[filename] = []
 
         # Load scan results
