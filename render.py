@@ -1662,7 +1662,7 @@ class Render:
         <div class="{message_class}">{html.escape(commit_info['body'])}</div>
     </div>
     <div class="header-fixed">
-        <div class="author-info">{html.escape(commit_info['author_name'])}</div>
+        <div class="author-info">{html.escape(commit_info['author_name'])}=================</div>
         <h1>{self._convert_urls_to_links(commit_info['subject'])}</h1>
     </div>
     <div class="review-main">
