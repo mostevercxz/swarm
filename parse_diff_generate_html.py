@@ -1017,7 +1017,7 @@ class GitCommitReviewGenerator:
         # Load scan results
         scan_results = []
         try:
-            with open('scan_results.json', 'r', encoding='utf-8') as f:
+            with open('scan_results1.json', 'r', encoding='utf-8') as f:
                 scan_results = json.load(f)
         except Exception:
             pass
@@ -1111,188 +1111,171 @@ class GitCommitReviewGenerator:
     
     def parse_diff_to_html_with_expand(self, diff_text, filename, file_idx, scan_results):
         """
-        Like parse_diff_to_html, but adds expandable context controls and returns hunk metadata for JS.
-        Renders collapsed context blocks for lines not included in the diff, so hunk headers and diff lines appear at the correct file line numbers.
-        For each gap, only a single 'Show more below' button is rendered (never both above and below for the same gap).
+        Parse git diff to HTML with expandable context and scan results.
+        Treats scan results as fake diff hunks with [-10, +10] context to unify the rendering logic.
         """
-        if not diff_text:
-            return "<div class='diff-empty'>No changes</div>", []
-        html_lines = []
-        lines = diff_text.split('\n')
         # Get the full new file content for context
         try:
             with open(os.path.join(self.repo_path, filename), 'r', encoding='utf-8', errors='replace') as f:
                 full_lines = f.read().splitlines()
         except Exception:
             full_lines = []
-        hunk_meta = []
-        hunk_infos = []
-        # Parse all hunks and their start/end lines
-        i = 0
-        while i < len(lines):
-            line = lines[i]
-            if line.startswith('@@'):
-                match = re.match(r'^@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? \+(?P<new_start>\d+)(?:,(?P<new_count>\d+))? @@', line)
-                if match:
-                    new_start = int(match.group('new_start'))
-                    new_count = int(match.group('new_count') or '1')
-                    hunk_infos.append({'diff_idx': i, 'new_start': new_start, 'new_count': new_count})
-            i += 1
-        html_lines.append("<div class='diff-content'>")
-        html_lines.append(f"<table class='diff-table' data-filename='{html.escape(filename)}' data-file-idx='{file_idx}'>")
-        prev_hunk_end = 0
-        i = 0
+        
+        # Parse original diff hunks
+        all_hunks = []
+        if diff_text:
+            lines = diff_text.split('\n')
+            i = 0
+            while i < len(lines):
+                line = lines[i]
+                if line.startswith('@@'):
+                    match = re.match(r'^@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? \+(?P<new_start>\d+)(?:,(?P<new_count>\d+))? @@', line)
+                    if match:
+                        new_start = int(match.group('new_start'))
+                        new_count = int(match.group('new_count') or '1')
+                        all_hunks.append({
+                            'type': 'real_diff',
+                            'diff_idx': i,
+                            'new_start': new_start,
+                            'new_count': new_count,
+                            'original_lines': lines
+                        })
+                i += 1
+        
+        # Create fake hunks for scan results with [-10, +10] context, but only for uncovered lines
         covered_lines = set()
-        # Mark all lines covered by hunks
-        for hunk in hunk_infos:
+        for hunk in all_hunks:
             for ln in range(hunk['new_start'], hunk['new_start'] + hunk['new_count']):
                 covered_lines.add(ln)
-        # Find scan result lines not covered by hunks
+        
         scan_lines = [int(r['行号']) for r in scan_results if r['文件名'] == filename]
-        extra_context_blocks = []
         for scan_line in scan_lines:
+            # Only create scan context hunk if the scan line is not already covered by real diff
             if scan_line not in covered_lines:
-                # [-10, +10] range, clamp to file
-                start = max(1, scan_line - 10)
-                end = min(len(full_lines), scan_line + 10)
-                extra_context_blocks.append((start, end, scan_line))
-        # Merge overlapping/adjacent blocks
-        extra_context_blocks.sort()
-        merged_blocks = []
-        for block in extra_context_blocks:
-            if not merged_blocks:
-                merged_blocks.append(list(block))
-            else:
-                last = merged_blocks[-1]
-                if block[0] <= last[1] + 1:
-                    last[1] = max(last[1], block[1])
-                else:
-                    merged_blocks.append(list(block))
-        # Render all merged scan context blocks before normal hunks
-        rendered_scan_lines = set()
-        for start, end, _ in merged_blocks:
-            # Add expansion buttons above the scan context block
-            if start > 1:
-                above_start = max(1, start - 20)  # Show up to 20 lines above
-                above_end = start - 1
-                if above_start <= above_end:
-                    html_lines.append(
-                        f"<tr class='expand-row'><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content'><button class='expand-icon' data-expand='above-10' data-context-start='{above_start}' data-context-end='{above_end}' title='向上10行'>▲10</button> <button class='expand-icon' data-expand='above' data-context-start='{above_start}' data-context-end='{above_end}' title='向上到上一个diff块'>▲</button></td></tr>"
-                    )
-            
-            html_lines.append(f"<tr class='scan-context'><td colspan='4'><span class='scan-context-label'>Scan Result Context [{start}-{end}]</span></td></tr>")
-            for ln in range(start, end + 1):
-                safe_filename = filename.replace('/', '-').replace('\\', '-').replace('.', '-')
-                scan_result = next((r for r in scan_results if str(r['行号']) == str(ln) and r['文件名'] == filename), None)
-                jump_id = f"scanresult-{safe_filename}-{ln}" if scan_result else ''
-                tr_id = f" id='{jump_id}'" if jump_id else ''
-                scan_class = 'scan-result-context' + (' severe' if scan_result and scan_result['严重程度'] == '严重' else '')
-                if scan_result and ln not in rendered_scan_lines:
-                    html_lines.append(f"<tr class='scan-result {scan_class}'{tr_id}><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'>{ln}</td><td class='diff-line-content scan-result-content'><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
-                    rendered_scan_lines.add(ln)
-                else:
-                    content = full_lines[ln-1] if 0 <= ln-1 < len(full_lines) else ''
-                    html_lines.append(f"<tr class='diff-context scan-context'><td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>{ln}</td><td class='diff-line-content'>{html.escape(content)}</td></tr>")
-            
-            # Add expansion buttons below the scan context block
-            if end < len(full_lines):
-                below_start = end + 1
-                below_end = min(len(full_lines), end + 20)  # Show up to 20 lines below
-                if below_start <= below_end:
-                    html_lines.append(
-                        f"<tr class='expand-row'><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content'><button class='expand-icon' data-expand='below-10' data-context-start='{below_start}' data-context-end='{below_end}' title='向下10行'>▼10</button> <button class='expand-icon' data-expand='below' data-context-start='{below_start}' data-context-end='{below_end}' title='向下到下一个diff块'>▼</button></td></tr>"
-                    )
-        # Now render the normal diff hunks as before
-        for hunk_idx, hunk in enumerate(hunk_infos):
+                context_start = max(1, scan_line - 10)
+                context_end = min(len(full_lines), scan_line + 10)
+                context_count = context_end - context_start + 1
+                
+                all_hunks.append({
+                    'type': 'scan_context',
+                    'new_start': context_start,
+                    'new_count': context_count,
+                    'scan_line': scan_line
+                })
+        
+        # Sort all hunks by start line without merging
+        all_hunks.sort(key=lambda h: h['new_start'])
+        
+        # Now render all hunks using unified logic
+        html_lines = []
+        html_lines.append("<div class='diff-content'>")
+        html_lines.append(f"<table class='diff-table' data-filename='{html.escape(filename)}' data-file-idx='{file_idx}'>")
+        
+        prev_hunk_end = 0
+        hunk_meta = []
+        
+        for hunk in all_hunks:
             hunk_start = hunk['new_start']
             hunk_count = hunk['new_count']
             hunk_end = hunk_start + hunk_count - 1
-            # Only render a button if the gap is non-empty
+            
+            # Add expansion button for gap before this hunk
             if hunk_start > prev_hunk_end + 1:
                 context_start = prev_hunk_end + 1
                 context_end = hunk_start - 1
-                if context_start <= context_end:
-                    # All gaps between hunks should be "Show more above" since they appear above the next hunk
-                    # Show both 10-line and full expansion buttons
-                    html_lines.append(
-                        f"<tr class='expand-row'><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content'><button class='expand-icon' data-expand='above-10' data-context-start='{context_start}' data-context-end='{context_end}' title='向上10行'>▲10</button> <button class='expand-icon' data-expand='above' data-context-start='{context_start}' data-context-end='{context_end}' title='向上到上一个diff块'>▲</button></td></tr>"
-                    )
-            # Render hunk header
-            hunk_header_line = lines[hunk['diff_idx']]
-            html_lines.append(f"<tr class='diff-hunk-header'><td colspan='4'>{html.escape(hunk_header_line)}</td></tr>")
+                html_lines.append(
+                    f"<tr class='expand-row'><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content'><button class='expand-icon' data-expand='above-10' data-context-start='{context_start}' data-context-end='{context_end}' title='向上10行'>▲10</button> <button class='expand-icon' data-expand='above' data-context-start='{context_start}' data-context-end='{context_end}' title='向上到上一个diff块'>▲</button></td></tr>"
+                )
+            
+            # Render hunk content
+            if hunk['type'] == 'real_diff':
+                # Render real diff hunk
+                self._render_real_diff_hunk(html_lines, hunk, scan_results, filename, full_lines)
+            elif hunk['type'] == 'scan_context':
+                # Render scan context as fake hunk
+                self._render_scan_context_hunk(html_lines, hunk, scan_results, filename, full_lines)
+            
             hunk_meta.append({'start': hunk_start, 'file': filename})
-            # Render hunk lines
-            cur_old = None
-            cur_new = hunk_start
-            # Find old_start for this hunk
-            match = re.match(r'^@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? ', hunk_header_line)
-            if match:
-                cur_old = int(match.group('old_start'))
-            j = hunk['diff_idx'] + 1
-            # Track which line numbers have already had scan results inserted for this hunk
-            inserted_scan_lines = set()
-            while j < len(lines) and (not lines[j].startswith('@@')):
-                l = lines[j]
-                # For each line, check if a scan result should be shown (for this filename and line number)
-                scan_line_num = None
-                if l.startswith('+'):
-                    scan_line_num = cur_new
-                elif l.startswith('-'):
-                    scan_line_num = cur_old
-                elif l.startswith(' '):
-                    scan_line_num = cur_new
-                if scan_line_num is not None and scan_line_num not in inserted_scan_lines:
-                    scan_result = next((r for r in scan_results if str(r['行号']) == str(scan_line_num) and r['文件名'] == filename), None)
-                    if scan_result:
-                        safe_filename = filename.replace('/', '-').replace('\\', '-').replace('.', '-')
-                        jump_id = f"scanresult-{safe_filename}-{scan_line_num}"
-                        html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {'severe' if scan_result['严重程度'] == '严重' else ''}'><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
-                        inserted_scan_lines.add(scan_line_num)
-                if l.startswith('+'):
-                    html_lines.append("<tr class='diff-added'>")
-                    html_lines.append("<td class='diff-sign'>+</td>")
-                    html_lines.append("<td class='diff-line-num'></td>")
-                    html_lines.append(f"<td class='diff-line-num'>{cur_new}</td>")
-                    html_lines.append(f"<td class='diff-line-content'>{html.escape(l[1:])}</td>")
-                    html_lines.append("</tr>")
-                    cur_new += 1
-                elif l.startswith('-'):
-                    html_lines.append("<tr class='diff-removed'>")
-                    html_lines.append("<td class='diff-sign'>-</td>")
-                    html_lines.append(f"<td class='diff-line-num'>{cur_old}</td>")
-                    html_lines.append("<td class='diff-line-num'></td>")
-                    html_lines.append(f"<td class='diff-line-content'>{html.escape(l[1:])}</td>")
-                    html_lines.append("</tr>")
-                    cur_old += 1
-                elif l.startswith(' '):
-                    html_lines.append("<tr class='diff-context'>")
-                    html_lines.append("<td class='diff-sign'>&nbsp;</td>")
-                    html_lines.append(f"<td class='diff-line-num'>{cur_old}</td>")
-                    html_lines.append(f"<td class='diff-line-num'>{cur_new}</td>")
-                    html_lines.append(f"<td class='diff-line-content'>{html.escape(l[1:])}</td>")
-                    html_lines.append("</tr>")
-                    cur_old += 1
-                    cur_new += 1
-                else:
-                    html_lines.append("<tr>")
-                    html_lines.append("<td class='diff-sign'>&nbsp;</td>")
-                    html_lines.append("<td class='diff-line-num'></td>")
-                    html_lines.append("<td class='diff-line-num'></td>")
-                    html_lines.append(f"<td class='diff-line-content'>{html.escape(l)}</td>")
-                    html_lines.append("</tr>")
-                j += 1
             prev_hunk_end = hunk_end
-        # If there are lines after the last hunk, render collapsed context
+        
+        # Add expansion button for remaining lines after last hunk
         if prev_hunk_end < len(full_lines):
             context_start = prev_hunk_end + 1
             context_end = len(full_lines)
-            if context_start <= context_end:
-                html_lines.append(
-                    f"<tr class='expand-row'><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content'><button class='expand-icon' data-expand='below-10' data-context-start='{context_start}' data-context-end='{context_end}' title='向下10行'>▼10</button> <button class='expand-icon' data-expand='below' data-context-start='{context_start}' data-context-end='{context_end}' title='向下到下一个diff块'>▼</button></td></tr>"
-                )
+            html_lines.append(
+                f"<tr class='expand-row'><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content'><button class='expand-icon' data-expand='below-10' data-context-start='{context_start}' data-context-end='{context_end}' title='向下10行'>▼10</button> <button class='expand-icon' data-expand='below' data-context-start='{context_start}' data-context-end='{context_end}' title='向下到下一个diff块'>▼</button></td></tr>"
+            )
+        
         html_lines.append("</table>")
         html_lines.append("</div>")
         return "\n".join(html_lines), hunk_meta
+    
+    def _render_real_diff_hunk(self, html_lines, hunk, scan_results, filename, full_lines):
+        """Render a real diff hunk."""
+        lines = hunk['original_lines']
+        hunk_header_line = lines[hunk['diff_idx']]
+        html_lines.append(f"<tr class='diff-hunk-header'><td colspan='4'>{html.escape(hunk_header_line)}</td></tr>")
+        
+        # Parse the hunk to get starting line numbers
+        match = re.match(r'^@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? \+(?P<new_start>\d+)(?:,(?P<new_count>\d+))? @@', hunk_header_line)
+        cur_old = int(match.group('old_start')) if match else None
+        cur_new = hunk['new_start']
+        
+        # Render hunk lines
+        j = hunk['diff_idx'] + 1
+        while j < len(lines) and not lines[j].startswith('@@'):
+            l = lines[j]
+            
+            # Check for scan results on this line
+            scan_line_num = None
+            if l.startswith('+'):
+                scan_line_num = cur_new
+            elif l.startswith('-'):
+                scan_line_num = cur_old  
+            elif l.startswith(' '):
+                scan_line_num = cur_new
+                
+            if scan_line_num:
+                scan_result = next((r for r in scan_results if str(r['行号']) == str(scan_line_num) and r['文件名'] == filename), None)
+                if scan_result:
+                    safe_filename = filename.replace('/', '-').replace('\\', '-').replace('.', '-')
+                    jump_id = f"scanresult-{safe_filename}-{scan_line_num}"
+                    html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {'severe' if scan_result['严重程度'] == '严重' else ''}'><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
+            
+            # Render the actual diff line
+            if l.startswith('+'):
+                html_lines.append(f"<tr class='diff-added'><td class='diff-sign'>+</td><td class='diff-line-num'></td><td class='diff-line-num'>{cur_new}</td><td class='diff-line-content'>{html.escape(l[1:])}</td></tr>")
+                cur_new += 1
+            elif l.startswith('-'):
+                html_lines.append(f"<tr class='diff-removed'><td class='diff-sign'>-</td><td class='diff-line-num'>{cur_old}</td><td class='diff-line-num'></td><td class='diff-line-content'>{html.escape(l[1:])}</td></tr>")
+                cur_old += 1
+            elif l.startswith(' '):
+                html_lines.append(f"<tr class='diff-context'><td class='diff-sign'>&nbsp;</td><td class='diff-line-num'>{cur_old}</td><td class='diff-line-num'>{cur_new}</td><td class='diff-line-content'>{html.escape(l[1:])}</td></tr>")
+                cur_old += 1
+                cur_new += 1
+            j += 1
+    
+    def _render_scan_context_hunk(self, html_lines, hunk, scan_results, filename, full_lines):
+        """Render a scan context as a fake diff hunk."""
+        start_line = hunk['new_start']
+        end_line = hunk['new_start'] + hunk['new_count'] - 1
+        scan_line = hunk['scan_line']
+        
+        html_lines.append(f"<tr class='diff-hunk-header'><td colspan='4'>@@ Scan Result Context: Lines {start_line}-{end_line} @@</td></tr>")
+        
+        for ln in range(start_line, end_line + 1):
+            content = full_lines[ln-1] if 0 <= ln-1 < len(full_lines) else ''
+            
+            # Check if this line has a scan result
+            scan_result = next((r for r in scan_results if str(r['行号']) == str(ln) and r['文件名'] == filename), None)
+            if scan_result:
+                safe_filename = filename.replace('/', '-').replace('\\', '-').replace('.', '-')
+                jump_id = f"scanresult-{safe_filename}-{ln}"
+                html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'>{ln}</td><td class='diff-line-content scan-result-content {'severe' if scan_result['严重程度'] == '严重' else ''}'><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
+            else:
+                html_lines.append(f"<tr class='diff-context'><td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>{ln}</td><td class='diff-line-content'>{html.escape(content)}</td></tr>")
+    
+
     
     def generate_index_page(self, commit_hashes):
         """
