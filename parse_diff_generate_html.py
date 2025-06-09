@@ -1171,6 +1171,15 @@ class GitCommitReviewGenerator:
         # Render all merged scan context blocks before normal hunks
         rendered_scan_lines = set()
         for start, end, _ in merged_blocks:
+            # Add expansion buttons above the scan context block
+            if start > 1:
+                above_start = max(1, start - 20)  # Show up to 20 lines above
+                above_end = start - 1
+                if above_start <= above_end:
+                    html_lines.append(
+                        f"<tr class='expand-row'><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content'><button class='expand-icon' data-expand='above-10' data-context-start='{above_start}' data-context-end='{above_end}' title='向上10行'>▲10</button> <button class='expand-icon' data-expand='above' data-context-start='{above_start}' data-context-end='{above_end}' title='向上到上一个diff块'>▲</button></td></tr>"
+                    )
+            
             html_lines.append(f"<tr class='scan-context'><td colspan='4'><span class='scan-context-label'>Scan Result Context [{start}-{end}]</span></td></tr>")
             for ln in range(start, end + 1):
                 safe_filename = filename.replace('/', '-').replace('\\', '-').replace('.', '-')
@@ -1184,6 +1193,15 @@ class GitCommitReviewGenerator:
                 else:
                     content = full_lines[ln-1] if 0 <= ln-1 < len(full_lines) else ''
                     html_lines.append(f"<tr class='diff-context scan-context'><td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>{ln}</td><td class='diff-line-content'>{html.escape(content)}</td></tr>")
+            
+            # Add expansion buttons below the scan context block
+            if end < len(full_lines):
+                below_start = end + 1
+                below_end = min(len(full_lines), end + 20)  # Show up to 20 lines below
+                if below_start <= below_end:
+                    html_lines.append(
+                        f"<tr class='expand-row'><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content'><button class='expand-icon' data-expand='below-10' data-context-start='{below_start}' data-context-end='{below_end}' title='向下10行'>▼10</button> <button class='expand-icon' data-expand='below' data-context-start='{below_start}' data-context-end='{below_end}' title='向下到下一个diff块'>▼</button></td></tr>"
+                    )
         # Now render the normal diff hunks as before
         for hunk_idx, hunk in enumerate(hunk_infos):
             hunk_start = hunk['new_start']
