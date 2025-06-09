@@ -529,20 +529,52 @@ class GitCommitReviewGenerator:
         }
         /* Updated scan result styling */
         .scan-result-content {
-            background-color: rgba(255, 193, 7, 0.15);
-            padding: 8px !important;
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-left: 4px solid #f39c12;
+            padding: 12px !important;
+            margin: 4px 0;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         .scan-result-content.severe {
-            background-color: rgba(220, 53, 69, 0.15);
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-left: 4px solid #dc3545;
+        }
+        .scan-result-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        .scan-result-cid {
+            background-color: #dc3545;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            margin-right: 8px;
+            font-family: monospace;
+        }
+        .scan-result-cid.warning {
+            background-color: #f39c12;
+        }
+        .scan-result-count {
+            color: #6c757d;
+            font-size: 12px;
+            margin-left: auto;
         }
         .scan-result-description {
-            margin-bottom: 4px;
+            margin-bottom: 6px;
             font-weight: 500;
+            color: #495057;
         }
         .scan-result-suggestion {
-            color: #586069;
+            color: #6c757d;
             font-style: italic;
             font-size: 12px;
+            line-height: 1.4;
         }
         /* Add severity badge to line number */
         .diff-line-num::after {
@@ -1323,7 +1355,11 @@ class GitCommitReviewGenerator:
                 if scan_result:
                     safe_filename = filename.replace('/', '-').replace('\\', '-').replace('.', '-')
                     jump_id = f"scanresult-{safe_filename}-{scan_line_num}"
-                    html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {'severe' if scan_result['严重程度'] == '严重' else ''}'><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
+                    severity_class = 'severe' if scan_result['严重程度'] == '严重' else ''
+                    cid_class = '' if scan_result['严重程度'] == '严重' else 'warning'
+                    # Generate a fake CID number for display
+                    cid_number = f"CID {hash(scan_result['问题描述']) % 1000000:06d}"
+                    html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-header'><span class='scan-result-cid {cid_class}'>{cid_number}</span><span>未检查的返回值 (CHECKED_RETURN)</span></div><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
             
             # Render the actual diff line
             if l.startswith('+'):
@@ -1354,7 +1390,11 @@ class GitCommitReviewGenerator:
             if scan_result:
                 safe_filename = filename.replace('/', '-').replace('\\', '-').replace('.', '-')
                 jump_id = f"scanresult-{safe_filename}-{ln}"
-                html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'>{ln}</td><td class='diff-line-content scan-result-content {'severe' if scan_result['严重程度'] == '严重' else ''}'><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
+                severity_class = 'severe' if scan_result['严重程度'] == '严重' else ''
+                cid_class = '' if scan_result['严重程度'] == '严重' else 'warning'
+                # Generate a fake CID number for display
+                cid_number = f"CID {hash(scan_result['问题描述']) % 1000000:06d}"
+                html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'>{ln}</td><td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-header'><span class='scan-result-cid {cid_class}'>{cid_number}</span><span>未检查的返回值 (CHECKED_RETURN)</span></div><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
             else:
                 html_lines.append(f"<tr class='diff-context'><td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>{ln}</td><td class='diff-line-content'>{html.escape(content)}</td></tr>")
     
