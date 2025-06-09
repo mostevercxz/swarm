@@ -196,6 +196,43 @@ class Render:
             margin-bottom: 20px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
+        /* Fixed header for scrolling */
+        .header-fixed {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: #fff;
+            border-bottom: 1px solid #e1e4e8;
+            padding: 8px 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 1000;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .header-fixed.show {
+            display: flex;
+            opacity: 1;
+        }
+        .header-fixed h1 {
+            font-size: 16px;
+            margin: 0;
+            margin-right: 16px;
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .header-fixed .author-info {
+            font-size: 14px;
+            color: #586069;
+            white-space: nowrap;
+        }
+        /* Add padding to body when fixed header is shown to prevent content overlap */
+        body.fixed-header-shown {
+            padding-top: 60px;
+        }
         .header h1 {
             font-size: 24px;
             margin-bottom: 8px;
@@ -886,6 +923,25 @@ class Render:
                 return text.replace(/[&<>"']/g, function(m) { return map[m]; });
             }
             
+            // Fixed header scroll functionality
+            function handleFixedHeader() {
+                const header = document.querySelector('.header');
+                const fixedHeader = document.querySelector('.header-fixed');
+                
+                if (!header || !fixedHeader) return;
+                
+                const headerBottom = header.offsetTop + header.offsetHeight;
+                const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop;
+                
+                if (scrollTop > headerBottom) {
+                    fixedHeader.classList.add('show');
+                    document.body.classList.add('fixed-header-shown');
+                } else {
+                    fixedHeader.classList.remove('show');
+                    document.body.classList.remove('fixed-header-shown');
+                }
+            }
+            
             // Auto-scroll scan results panel to keep highlighted item visible
             function scrollScanResultItemIntoView(scanResultItem) {
                 if (!scanResultItem) return;
@@ -1148,6 +1204,9 @@ class Render:
             
             gitDiffLog('Total scroll listeners added:', listenersAdded);
             
+            // Add scroll listener for fixed header
+            window.addEventListener('scroll', handleFixedHeader);
+            
             // Set initial state to highlight first scan result item
             gitDiffLog('Setting initial scan result highlight to first item');
             setTimeout(function() {
@@ -1188,7 +1247,7 @@ class Render:
         # Sort scan results by filename and then by line number
         sorted_scan_results = sorted(scan_results, key=lambda r: (r['文件名'], int(r['行号'])))
         
-        html_parts = ['<h2>本次提交问题列表</h2>', '<div class="scan-results-list">']
+        html_parts = ['<div class="scan-results-list"><h2>本次提交问题列表</h2>']
         
         for result in sorted_scan_results:
             severity_class = 'severe' if result['严重程度'] == '严重' else ''
@@ -1601,6 +1660,10 @@ class Render:
             </div>
         </div>
         <div class="{message_class}">{html.escape(commit_info['body'])}</div>
+    </div>
+    <div class="header-fixed">
+        <div class="author-info">{html.escape(commit_info['author_name'])}</div>
+        <h1>{self._convert_urls_to_links(commit_info['subject'])}</h1>
     </div>
     <div class="review-main">
         <div class="file-list-panel">
