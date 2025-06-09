@@ -60,14 +60,12 @@ class SVNRevisionReviewGenerator:
         Returns:
             list: Combined scan results from all JSON files
         """
-        scan_results = []
-        
         if not self.scan_results_dir:
-            return scan_results
+            return []
             
         if not os.path.isdir(self.scan_results_dir):
             print(f"Warning: Scan results directory does not exist: {self.scan_results_dir}")
-            return scan_results
+            return []
         
         try:
             # Find all JSON files in the directory
@@ -77,6 +75,40 @@ class SVNRevisionReviewGenerator:
                     json_files.append(os.path.join(self.scan_results_dir, filename))
             
             print(f"Found {len(json_files)} JSON files in scan results directory")
+            
+            # Collect all issues from all JSON files first
+            from collections import defaultdict
+            all_issues_by_file_line = defaultdict(list)
+            
+            # Helper function to clean text content
+            def clean_text_content(text):
+                if not text:
+                    return text
+                # Remove navigation elements like "向上10行", "向下10行", etc.
+                import re
+                # Remove navigation patterns
+                text = re.sub(r'向[上下]\d+行', '', text)
+                # Remove problematic navigation elements but keep normal text
+                # Just clean up multiple spaces and newlines for now
+                text = re.sub(r'\s+', ' ', text).strip()
+                return text
+            
+            # Helper function to parse line number from line range
+            def parse_line_number(line_range, source_code):
+                if '-' in line_range:
+                    # Range like "3345-3348", take the starting line
+                    return int(line_range.split('-')[0])
+                elif line_range.isdigit():
+                    # Single line number like "3358"
+                    return int(line_range)
+                else:
+                    # Find first line number in source code
+                    import re
+                    match = re.search(r'\n(\d+)', source_code)
+                    if match:
+                        return int(match.group(1))
+                    else:
+                        return 1  # Default to line 1 if no line number found
             
             # Load and combine results from all JSON files
             for json_file in json_files:
@@ -105,24 +137,7 @@ class SVNRevisionReviewGenerator:
                         
                         source_code = file_data.get('源码', '')
                         
-                        # Helper function to parse line number from line range
-                        def parse_line_number(line_range, source_code):
-                            if '-' in line_range:
-                                # Range like "3345-3348", take the starting line
-                                return int(line_range.split('-')[0])
-                            elif line_range.isdigit():
-                                # Single line number like "3358"
-                                return int(line_range)
-                            else:
-                                # Find first line number in source code
-                                import re
-                                match = re.search(r'\n(\d+)', source_code)
-                                if match:
-                                    return int(match.group(1))
-                                else:
-                                    return 1  # Default to line 1 if no line number found
-                        
-                        # Collect all issues for this file, then group by line number
+                        # Collect all issues for this file
                         file_issues = []
                         
                         # Process "可能存在的问题" (general severity)
@@ -131,11 +146,15 @@ class SVNRevisionReviewGenerator:
                                 line_range = issue.get('行号范围', '1')
                                 line_number = parse_line_number(line_range, source_code)
                                 
+                                # Clean the text content
+                                description = clean_text_content(issue.get('问题描述', ''))
+                                suggestion = clean_text_content(issue.get('修改意见', ''))
+                                
                                 file_issues.append({
                                     '文件名': filename,
                                     '行号': line_number,
-                                    '问题描述': issue.get('问题描述', ''),
-                                    '修改意见': issue.get('修改意见', ''),
+                                    '问题描述': description,
+                                    '修改意见': suggestion,
                                     '严重程度': '一般'
                                 })
                         
@@ -145,60 +164,79 @@ class SVNRevisionReviewGenerator:
                                 line_range = issue.get('行号范围', '1')
                                 line_number = parse_line_number(line_range, source_code)
                                 
+                                # Clean the text content
+                                description = clean_text_content(issue.get('问题描述', ''))
+                                suggestion = clean_text_content(issue.get('修改意见', ''))
+                                
                                 file_issues.append({
                                     '文件名': filename,
                                     '行号': line_number,
-                                    '问题描述': issue.get('问题描述', ''),
-                                    '修改意见': issue.get('修改意见', ''),
+                                    '问题描述': description,
+                                    '修改意见': suggestion,
                                     '严重程度': '严重'
                                 })
                         
-                        # Group issues by line number and combine them
-                        from collections import defaultdict
-                        grouped_issues = defaultdict(list)
+                        # Add all issues to the global collection, keyed by (filename, line_number)
                         for issue in file_issues:
-                            grouped_issues[issue['行号']].append(issue)
+                            key = (issue['文件名'], issue['行号'])
+                            all_issues_by_file_line[key].append(issue)
                         
-                        # Create combined scan results for each line
-                        for line_number, issues in grouped_issues.items():
-                            # Determine the most severe level
-                            has_severe = any(issue['严重程度'] == '严重' for issue in issues)
-                            severity = '严重' if has_severe else '一般'
-                            
-                            # Format issues nicely
-                            if len(issues) == 1:
-                                # Single issue, use original format
-                                combined_description = issues[0]['问题描述']
-                                combined_suggestion = issues[0]['修改意见']
-                            else:
-                                # Multiple issues, use structured format
-                                formatted_parts = []
-                                for i, issue in enumerate(issues, 1):
-                                    part = f"问题{i}：{issue['严重程度']}\n问题描述：{issue['问题描述']}\n修改意见：{issue['修改意见']}"
-                                    formatted_parts.append(part)
-                                
-                                combined_description = '\n============\n'.join(formatted_parts)
-                                combined_suggestion = f"共{len(issues)}个问题需要处理，请查看详细描述"
-                            
-                            scan_results.append({
-                                '文件名': filename,
-                                '行号': line_number,
-                                '问题描述': combined_description,
-                                '修改意见': combined_suggestion,
-                                '严重程度': severity,
-                                '问题数量': len(issues)  # Track how many issues were combined
-                            })
-                        
-                        print(f"  Loaded {len(file_issues)} scan results grouped into {len(grouped_issues)} unique lines for {filename}")
+                        print(f"  Loaded {len(file_issues)} scan results for {filename}")
                         
                 except Exception as e:
                     print(f"  Error loading scan results from {json_file}: {e}")
                     continue
             
-            print(f"Total scan results loaded: {len(scan_results)}")
+            # Now create the final scan results by grouping all issues by file and line
+            scan_results = []
+            for (filename, line_number), issues in all_issues_by_file_line.items():
+                print(f"  DEBUG: Processing {filename} line {line_number} with {len(issues)} issues:")
+                for i, issue in enumerate(issues):
+                    print(f"    Issue {i+1}: {issue['严重程度']} - {issue['问题描述'][:50]}...")
+                
+                # Determine the most severe level
+                has_severe = any(issue['严重程度'] == '严重' for issue in issues)
+                severity = '严重' if has_severe else '一般'
+                
+                # Format issues nicely
+                if len(issues) == 1:
+                    # Single issue, use original format
+                    combined_description = issues[0]['问题描述']
+                    combined_suggestion = issues[0]['修改意见']
+                else:
+                    # Multiple issues, use structured format
+                    formatted_parts = []
+                    for i, issue in enumerate(issues, 1):
+                        part = f"问题{i}：{issue['严重程度']}\n问题描述：{issue['问题描述']}\n修改意见：{issue['修改意见']}"
+                        formatted_parts.append(part)
+                    
+                    combined_description = '\n============\n'.join(formatted_parts)
+                    combined_suggestion = f"共{len(issues)}个问题需要处理，请查看详细描述"
+                
+                final_result = {
+                    '文件名': filename,
+                    '行号': line_number,
+                    '问题描述': combined_description,
+                    '修改意见': combined_suggestion,
+                    '严重程度': severity,
+                    '问题数量': len(issues)  # Track how many issues were combined
+                }
+                scan_results.append(final_result)
+                print(f"  DEBUG: Created final scan result for {filename}:{line_number} with {len(issues)} combined issues")
+            
+            # Print summary by file
+            file_summary = defaultdict(list)
+            for result in scan_results:
+                file_summary[result['文件名']].append(result['行号'])
+            
+            for filename, line_numbers in file_summary.items():
+                print(f"  Final results for {filename} on lines: {sorted(line_numbers)}")
+            
+            print(f"Total unique scan results loaded: {len(scan_results)}")
                     
         except Exception as e:
             print(f"Error accessing scan results directory {self.scan_results_dir}: {e}")
+            return []
         
         return scan_results
     
@@ -442,18 +480,55 @@ class SVNRevisionReviewGenerator:
         
         return generated_files
     
-    def parse_diff_to_html(self, diff_text):
+    def parse_diff_to_html(self, diff_text, filename="", scan_results=None):
         """
-        Parse SVN diff output to HTML with syntax highlighting.
+        Parse SVN diff output to HTML with syntax highlighting and scan result integration.
         
         Args:
             diff_text (str): SVN diff output
+            filename (str): The filename being processed
+            scan_results (list): List of scan results for this file
             
         Returns:
             str: HTML representation of the diff
         """
         if not diff_text:
             return "<div class='diff-empty'>No changes</div>"
+        
+        # Filter scan results for this file
+        file_scan_results = {}
+        if scan_results:
+            print(f"  DEBUG: parse_diff_to_html processing {filename} with {len(scan_results)} total scan results")
+            for result in scan_results:
+                # Normalize filename for comparison
+                result_filename = result['文件名'].replace('\\', '/')
+                current_filename = filename.replace('\\', '/')
+                
+                # More flexible filename matching
+                is_match = (
+                    result_filename == current_filename or 
+                    current_filename.endswith(result_filename) or
+                    result_filename.endswith(current_filename) or
+                    os.path.basename(result_filename) == os.path.basename(current_filename)
+                )
+                
+                if is_match:
+                    line_num = result['行号']
+                    if line_num not in file_scan_results:
+                        file_scan_results[line_num] = []
+                    file_scan_results[line_num].append(result)
+                    print(f"    DEBUG: Added scan result for line {line_num} (问题数量: {result.get('问题数量', 1)})")
+            
+            # Debug: print what scan results we found for this file
+            if file_scan_results:
+                print(f"  Found scan results for {filename} on lines: {sorted(file_scan_results.keys())}")
+                for line_num, results in file_scan_results.items():
+                    print(f"    Line {line_num}: {len(results)} scan result entries")
+            else:
+                print(f"  No scan results found for {filename}")
+                # Print available scan result filenames for debugging
+                available_files = set(result['文件名'] for result in scan_results)
+                print(f"  Available scan result files: {list(available_files)}")
             
         html_lines = []
         
@@ -465,6 +540,12 @@ class SVNRevisionReviewGenerator:
         # Track line numbers
         old_line_num = 0
         new_line_num = 0
+        
+        # Track which scan results have been rendered to avoid duplicates
+        rendered_scan_results = set()
+        
+        # Create safe filename for IDs
+        safe_filename = filename.replace('/', '-').replace('\\', '-').replace('.', '-')
         
         for i, line in enumerate(lines):
             if in_header and line.startswith('@@'):
@@ -496,31 +577,189 @@ class SVNRevisionReviewGenerator:
                 html_lines.append("<tr class='diff-hunk-header'>")
                 html_lines.append(f"<td colspan='4'>{html.escape(line)}</td>")
                 html_lines.append("</tr>")
+                
+                # Update line numbers from hunk header
+                match = re.match(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@', line)
+                if match:
+                    old_line_num = int(match.group(1))
+                    new_line_num = int(match.group(3))
+                    
             elif line.startswith('+'):
                 # Added line
-                html_lines.append("<tr class='diff-added'>")
+                line_id = f"scanresult-{safe_filename}-{new_line_num}"
+                scan_result_class = ""
+                scan_result_tooltip = ""
+                
+                # Check for scan results on this exact line only
+                matching_results = file_scan_results.get(new_line_num, [])
+                
+                if matching_results:
+                    scan_result_class = " has-scan-result"
+                    results = matching_results
+                    severity = max(results, key=lambda x: 1 if x['严重程度'] == '严重' else 0)['严重程度']
+                    if severity == '严重':
+                        scan_result_class += " scan-result-severe"
+                    else:
+                        scan_result_class += " scan-result-general"
+                    
+                    # Create tooltip with issue descriptions
+                    tooltip_parts = []
+                    for result in results:
+                        tooltip_parts.append(f"[{result['严重程度']}] {result['问题描述']}")
+                    scan_result_tooltip = f"title=\"{html.escape('; '.join(tooltip_parts))}\""
+                
+                html_lines.append(f"<tr class='diff-added{scan_result_class}' id='{line_id}' {scan_result_tooltip}>")
                 html_lines.append("<td class='diff-sign'>+</td>")
                 html_lines.append("<td class='diff-line-num'></td>")
                 html_lines.append(f"<td class='diff-line-num'>{new_line_num}</td>")
                 html_lines.append(f"<td class='diff-line-content'>{html.escape(line[1:])}</td>")
                 html_lines.append("</tr>")
+                
+                # Add scan result details row if there are scan results
+                if matching_results:
+                    print(f"      DEBUG: Rendering {len(matching_results)} scan results for added line {new_line_num}")
+                    for idx, result in enumerate(matching_results):
+                        # Create a unique key for this scan result to avoid duplicates
+                        result_key = (result['文件名'], result['行号'], result['问题描述'])
+                        if result_key not in rendered_scan_results:
+                            print(f"        DEBUG: Rendering scan result {idx+1} with 问题数量: {result.get('问题数量', 1)}")
+                            rendered_scan_results.add(result_key)
+                            severity_class = "severe" if result['严重程度'] == '严重' else "general"
+                            html_lines.append(f"<tr class='scan-result-detail {severity_class}'>")
+                            html_lines.append("<td colspan='4'>")
+                            html_lines.append(f"<div class='scan-result-content'>")
+                            html_lines.append(f"<div class='scan-result-severity'>[{result['严重程度']}]</div>")
+                            html_lines.append(f"<div class='scan-result-description'>{html.escape(result['问题描述'])}</div>")
+                            html_lines.append(f"<div class='scan-result-suggestion'>建议: {html.escape(result['修改意见'])}</div>")
+                            html_lines.append("</div>")
+                            html_lines.append("</td>")
+                            html_lines.append("</tr>")
+                        else:
+                            print(f"        DEBUG: Skipping already rendered scan result {idx+1}")
+                
                 new_line_num += 1
+                
             elif line.startswith('-'):
                 # Removed line
-                html_lines.append("<tr class='diff-removed'>")
+                line_id = f"scanresult-{safe_filename}-{old_line_num}"
+                scan_result_class = ""
+                scan_result_tooltip = ""
+                
+                # Check for scan results on this exact line only
+                matching_results_removed = file_scan_results.get(old_line_num, [])
+                
+                if matching_results_removed:
+                    scan_result_class = " has-scan-result"
+                    results = matching_results_removed
+                    severity = max(results, key=lambda x: 1 if x['严重程度'] == '严重' else 0)['严重程度']
+                    if severity == '严重':
+                        scan_result_class += " scan-result-severe"
+                    else:
+                        scan_result_class += " scan-result-general"
+                    
+                    # Create tooltip with issue descriptions
+                    tooltip_parts = []
+                    for result in results:
+                        tooltip_parts.append(f"[{result['严重程度']}] {result['问题描述']}")
+                    scan_result_tooltip = f"title=\"{html.escape('; '.join(tooltip_parts))}\""
+                
+                html_lines.append(f"<tr class='diff-removed{scan_result_class}' id='{line_id}' {scan_result_tooltip}>")
                 html_lines.append("<td class='diff-sign'>-</td>")
                 html_lines.append(f"<td class='diff-line-num'>{old_line_num}</td>")
                 html_lines.append("<td class='diff-line-num'></td>")
                 html_lines.append(f"<td class='diff-line-content'>{html.escape(line[1:])}</td>")
                 html_lines.append("</tr>")
+                
+                # Add scan result details row if there are scan results
+                if matching_results_removed:
+                    print(f"      DEBUG: Rendering {len(matching_results_removed)} scan results for removed line {old_line_num}")
+                    for idx, result in enumerate(matching_results_removed):
+                        # Create a unique key for this scan result to avoid duplicates
+                        result_key = (result['文件名'], result['行号'], result['问题描述'])
+                        if result_key not in rendered_scan_results:
+                            print(f"        DEBUG: Rendering scan result {idx+1} with 问题数量: {result.get('问题数量', 1)}")
+                            rendered_scan_results.add(result_key)
+                            severity_class = "severe" if result['严重程度'] == '严重' else "general"
+                            html_lines.append(f"<tr class='scan-result-detail {severity_class}'>")
+                            html_lines.append("<td colspan='4'>")
+                            html_lines.append(f"<div class='scan-result-content'>")
+                            html_lines.append(f"<div class='scan-result-severity'>[{result['严重程度']}]</div>")
+                            html_lines.append(f"<div class='scan-result-description'>{html.escape(result['问题描述'])}</div>")
+                            html_lines.append(f"<div class='scan-result-suggestion'>建议: {html.escape(result['修改意见'])}</div>")
+                            html_lines.append("</div>")
+                            html_lines.append("</td>")
+                            html_lines.append("</tr>")
+                        else:
+                            print(f"        DEBUG: Skipping already rendered scan result {idx+1}")
+                
+                old_line_num += 1
+                
             elif line.startswith(' '):
                 # Context line
-                html_lines.append("<tr class='diff-context'>")
+                line_id = f"scanresult-{safe_filename}-{new_line_num}"
+                scan_result_class = ""
+                scan_result_tooltip = ""
+                
+                # Check for scan results on this exact line (both old and new line numbers)
+                scan_results_for_line = []
+                if old_line_num in file_scan_results:
+                    scan_results_for_line.extend(file_scan_results[old_line_num])
+                if new_line_num in file_scan_results and new_line_num != old_line_num:
+                    scan_results_for_line.extend(file_scan_results[new_line_num])
+                
+                # Remove duplicates
+                unique_results = []
+                seen_descriptions = set()
+                for result in scan_results_for_line:
+                    desc_key = (result['问题描述'], result['行号'])
+                    if desc_key not in seen_descriptions:
+                        unique_results.append(result)
+                        seen_descriptions.add(desc_key)
+                scan_results_for_line = unique_results
+                
+                if scan_results_for_line:
+                    scan_result_class = " has-scan-result"
+                    severity = max(scan_results_for_line, key=lambda x: 1 if x['严重程度'] == '严重' else 0)['严重程度']
+                    if severity == '严重':
+                        scan_result_class += " scan-result-severe"
+                    else:
+                        scan_result_class += " scan-result-general"
+                    
+                    # Create tooltip with issue descriptions
+                    tooltip_parts = []
+                    for result in scan_results_for_line:
+                        tooltip_parts.append(f"[{result['严重程度']}] {result['问题描述']}")
+                    scan_result_tooltip = f"title=\"{html.escape('; '.join(tooltip_parts))}\""
+                
+                html_lines.append(f"<tr class='diff-context{scan_result_class}' id='{line_id}' {scan_result_tooltip}>")
                 html_lines.append("<td class='diff-sign'>&nbsp;</td>")
                 html_lines.append(f"<td class='diff-line-num'>{old_line_num}</td>")
                 html_lines.append(f"<td class='diff-line-num'>{new_line_num}</td>")
                 html_lines.append(f"<td class='diff-line-content'>{html.escape(line[1:])}</td>")
                 html_lines.append("</tr>")
+                
+                # Add scan result details row if there are scan results
+                if scan_results_for_line:
+                    print(f"      DEBUG: Rendering {len(scan_results_for_line)} scan results for context line {new_line_num}")
+                    for idx, result in enumerate(scan_results_for_line):
+                        # Create a unique key for this scan result to avoid duplicates
+                        result_key = (result['文件名'], result['行号'], result['问题描述'])
+                        if result_key not in rendered_scan_results:
+                            print(f"        DEBUG: Rendering scan result {idx+1} with 问题数量: {result.get('问题数量', 1)}")
+                            rendered_scan_results.add(result_key)
+                            severity_class = "severe" if result['严重程度'] == '严重' else "general"
+                            html_lines.append(f"<tr class='scan-result-detail {severity_class}'>")
+                            html_lines.append("<td colspan='4'>")
+                            html_lines.append(f"<div class='scan-result-content'>")
+                            html_lines.append(f"<div class='scan-result-severity'>[{result['严重程度']}]</div>")
+                            html_lines.append(f"<div class='scan-result-description'>{html.escape(result['问题描述'])}</div>")
+                            html_lines.append(f"<div class='scan-result-suggestion'>建议: {html.escape(result['修改意见'])}</div>")
+                            html_lines.append("</div>")
+                            html_lines.append("</td>")
+                            html_lines.append("</tr>")
+                        else:
+                            print(f"        DEBUG: Skipping already rendered scan result {idx+1}")
+                
                 old_line_num += 1
                 new_line_num += 1
             else:
@@ -760,6 +999,88 @@ class SVNRevisionReviewGenerator:
             color: #586069;
             font-style: italic;
         }
+        /* Scan result styles */
+        .has-scan-result {
+            position: relative;
+        }
+        .has-scan-result.scan-result-severe {
+            background-color: rgba(220, 53, 69, 0.1) !important;
+            border-left: 3px solid #dc3545;
+        }
+        .has-scan-result.scan-result-general {
+            background-color: rgba(255, 193, 7, 0.1) !important;
+            border-left: 3px solid #ffc107;
+        }
+        .has-scan-result .diff-line-num {
+            position: relative;
+        }
+        .has-scan-result.scan-result-severe .diff-line-num::after {
+            content: "⚠";
+            color: #dc3545;
+            font-weight: bold;
+            position: absolute;
+            right: 2px;
+            top: 0;
+        }
+        .has-scan-result.scan-result-general .diff-line-num::after {
+            content: "⚠";
+            color: #ffc107;
+            font-weight: bold;
+            position: absolute;
+            right: 2px;
+            top: 0;
+        }
+        .scan-result-detail {
+            background-color: #f8f9fa;
+            border-left: 3px solid #6c757d;
+        }
+        .scan-result-detail.severe {
+            background-color: #f8d7da;
+            border-left-color: #dc3545;
+        }
+        .scan-result-detail.general {
+            background-color: #fff3cd;
+            border-left-color: #ffc107;
+        }
+        .scan-result-content {
+            padding: 8px 12px;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-size: 12px;
+            line-height: 1.4;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        .scan-result-severity {
+            font-weight: bold;
+            margin-bottom: 4px;
+            color: #495057;
+        }
+        .scan-result-detail.severe .scan-result-severity {
+            color: #dc3545;
+        }
+        .scan-result-detail.general .scan-result-severity {
+            color: #856404;
+        }
+        .scan-result-description {
+            margin-bottom: 4px;
+            color: #495057;
+            max-width: 600px;
+            white-space: pre-wrap;
+        }
+        .scan-result-suggestion {
+            color: #6c757d;
+            font-style: italic;
+            max-width: 600px;
+            white-space: pre-wrap;
+        }
+        .scan-result-highlight {
+            animation: highlight-flash 1.6s ease-out;
+        }
+        @keyframes highlight-flash {
+            0% { background-color: #007bff; }
+            50% { background-color: rgba(0, 123, 255, 0.3); }
+            100% { background-color: transparent; }
+        }
         .footer {
             margin-top: 40px;
             text-align: center;
@@ -981,7 +1302,7 @@ class SVNRevisionReviewGenerator:
         for i, file_info in enumerate(revision_info['files_changed']):
             filename = file_info['filename']
             diff_text = self.get_file_diff(revision, filename)
-            diff_html = self.parse_diff_to_html(diff_text)
+            diff_html = self.parse_diff_to_html(diff_text, filename, scan_results)
             html_content += f'''
             <div id="diff-{i}" class="diff-container">
                 <div class="diff-header">
