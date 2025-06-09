@@ -770,17 +770,17 @@ class GitCommitReviewGenerator:
                     let visibleLines = new Set();
                     let allRows = Array.from(table.querySelectorAll('tr'));
                     gitDiffLog(`Total table rows: ${allRows.length}`);
-                    allRows.slice(0, 10).forEach((row, i) => {
+                    allRows.forEach((row, i) => {
                         let lineNumCells = row.querySelectorAll('.diff-line-num');
-                        gitDiffLog(`Row ${i} (${row.className}): ${lineNumCells.length} line cells`);
                         if (lineNumCells.length >= 2) {
-                            let oldLineText = lineNumCells[0].textContent.trim();
-                            let newLineText = lineNumCells[1].textContent.trim();
-                            gitDiffLog(`  Old line: "${oldLineText}", New line: "${newLineText}"`);
-                            let newLineNum = parseInt(newLineText);
-                            if (!isNaN(newLineNum) && newLineNum > 0) {
-                                visibleLines.add(newLineNum);
-                                gitDiffLog(`  Added line ${newLineNum} to visible set`);
+                            // Check both old and new line numbers
+                            for (let j = 0; j < lineNumCells.length; j++) {
+                                let lineText = lineNumCells[j].textContent.trim();
+                                let lineNum = parseInt(lineText);
+                                if (!isNaN(lineNum) && lineNum > 0) {
+                                    visibleLines.add(lineNum);
+                                    gitDiffLog(`  Added line ${lineNum} to visible set from cell ${j}`);
+                                }
                             }
                         }
                     });
@@ -807,17 +807,24 @@ class GitCommitReviewGenerator:
                         let row = rows[i];
                         let lineNumCells = row.querySelectorAll('.diff-line-num');
                         if (lineNumCells.length >= 2) {
-                            let newLineText = lineNumCells[1].textContent.trim();
-                            let rowLineNum = parseInt(newLineText);
-                            if (!isNaN(rowLineNum) && rowLineNum > 0) {
-                                gitDiffLog(`Row ${i}: line number ${rowLineNum}`);
-                                if (rowLineNum > contextStart) {
+                            // Find the highest line number in this row
+                            let maxLineNum = 0;
+                            for (let j = 0; j < lineNumCells.length; j++) {
+                                let lineText = lineNumCells[j].textContent.trim();
+                                let lineNum = parseInt(lineText);
+                                if (!isNaN(lineNum) && lineNum > 0) {
+                                    maxLineNum = Math.max(maxLineNum, lineNum);
+                                }
+                            }
+                            if (maxLineNum > 0) {
+                                gitDiffLog(`Row ${i}: max line number ${maxLineNum}`);
+                                if (maxLineNum > contextStart) {
                                     insertionPoint = row;
-                                    gitDiffLog(`Found insertion point at row ${i} (line ${rowLineNum})`);
+                                    gitDiffLog(`Found insertion point at row ${i} (line ${maxLineNum})`);
                                     break;
                                 }
                             } else {
-                                gitDiffLog(`Row ${i}: invalid line number "${newLineText}" (${row.className})`);
+                                gitDiffLog(`Row ${i}: no valid line numbers (${row.className})`);
                             }
                         } else {
                             gitDiffLog(`Row ${i}: no line number cells (${row.className})`);
@@ -846,10 +853,13 @@ class GitCommitReviewGenerator:
                     table.querySelectorAll('tr').forEach((row) => {
                         let lineNumCells = row.querySelectorAll('.diff-line-num');
                         if (lineNumCells.length >= 2) {
-                            let newLineText = lineNumCells[1].textContent.trim();
-                            let newLineNum = parseInt(newLineText);
-                            if (!isNaN(newLineNum) && newLineNum > 0) {
-                                finalVisibleLines.add(newLineNum);
+                            // Check both old and new line numbers
+                            for (let j = 0; j < lineNumCells.length; j++) {
+                                let lineText = lineNumCells[j].textContent.trim();
+                                let lineNum = parseInt(lineText);
+                                if (!isNaN(lineNum) && lineNum > 0) {
+                                    finalVisibleLines.add(lineNum);
+                                }
                             }
                         }
                     });
@@ -886,10 +896,13 @@ class GitCommitReviewGenerator:
                         table.querySelectorAll('tr').forEach((row) => {
                             let lineNumCells = row.querySelectorAll('.diff-line-num');
                             if (lineNumCells.length >= 2) {
-                                let newLineText = lineNumCells[1].textContent.trim();
-                                let newLineNum = parseInt(newLineText);
-                                if (!isNaN(newLineNum) && newLineNum > 0) {
-                                    visibleLines.add(newLineNum);
+                                // Check both old and new line numbers
+                                for (let j = 0; j < lineNumCells.length; j++) {
+                                    let lineText = lineNumCells[j].textContent.trim();
+                                    let lineNum = parseInt(lineText);
+                                    if (!isNaN(lineNum) && lineNum > 0) {
+                                        visibleLines.add(lineNum);
+                                    }
                                 }
                             }
                         });
@@ -1142,29 +1155,99 @@ class GitCommitReviewGenerator:
                         })
                 i += 1
         
-        # Create fake hunks for scan results with [-10, +10] context, but only for uncovered lines
+        # Calculate actual line coverage for real diff hunks by parsing the diff content
         covered_lines = set()
+        print(f"\n===== DEBUG: Processing file {filename} =====")
+        print(f"Total real diff hunks: {len([h for h in all_hunks if h['type'] == 'real_diff'])}")
+        
         for hunk in all_hunks:
-            for ln in range(hunk['new_start'], hunk['new_start'] + hunk['new_count']):
-                covered_lines.add(ln)
+            if hunk['type'] == 'real_diff':
+                print(f"\nProcessing real diff hunk starting at line {hunk['new_start']}")
+                # Parse the actual diff lines to see which new file lines are covered
+                lines = hunk['original_lines']
+                hunk_header = lines[hunk['diff_idx']]
+                print(f"Hunk header: {hunk_header}")
+                match = re.match(r'^@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? \+(?P<new_start>\d+)(?:,(?P<new_count>\d+))? @@', hunk_header)
+                if match:
+                    cur_new = int(match.group('new_start'))
+                    original_cur_new = cur_new
+                    j = hunk['diff_idx'] + 1
+                    covered_lines_in_hunk = []
+                    while j < len(lines) and not lines[j].startswith('@@'):
+                        l = lines[j]
+                        if l.startswith('+') or l.startswith(' '):
+                            covered_lines.add(cur_new)
+                            covered_lines_in_hunk.append(cur_new)
+                            cur_new += 1
+                        # Deleted lines (starting with '-') don't increment new line number
+                        j += 1
+                    print(f"  Real diff covers lines: {sorted(covered_lines_in_hunk)} (range: {original_cur_new}-{cur_new-1})")
+        
+        print(f"\nTotal covered lines by real diffs: {sorted(covered_lines)}")
         
         scan_lines = [int(r['行号']) for r in scan_results if r['文件名'] == filename]
+        print(f"\nScan lines to process: {scan_lines}")
+        
         for scan_line in scan_lines:
-            # Only create scan context hunk if the scan line is not already covered by real diff
-            if scan_line not in covered_lines:
-                context_start = max(1, scan_line - 10)
-                context_end = min(len(full_lines), scan_line + 10)
-                context_count = context_end - context_start + 1
+            context_start = max(1, scan_line - 10)
+            context_end = min(len(full_lines), scan_line + 10)
+            print(f"\nProcessing scan line {scan_line}, context range [{context_start}-{context_end}]")
+            
+            # Check if the scan line itself is covered by a real diff
+            scan_line_covered = scan_line in covered_lines
+            
+            if scan_line_covered:
+                print(f"  Scan line {scan_line} is covered by real diff. SKIPPING scan context hunk.")
+            else:
+                # Check for overlaps with real diffs and adjust context range
+                # Find non-overlapping segments of the context range
+                segments = []
+                current_start = context_start
                 
-                all_hunks.append({
-                    'type': 'scan_context',
-                    'new_start': context_start,
-                    'new_count': context_count,
-                    'scan_line': scan_line
-                })
+                # Sort covered lines to find gaps
+                overlapping_covered = sorted([ln for ln in covered_lines if context_start <= ln <= context_end])
+                print(f"  Lines in context range already covered by real diffs: {overlapping_covered}")
+                
+                if not overlapping_covered:
+                    # No overlap, use full context
+                    segments = [(context_start, context_end)]
+                else:
+                    # Find non-overlapping segments
+                    last_covered = context_start - 1
+                    for covered_line in overlapping_covered + [context_end + 1]:  # Add sentinel
+                        if covered_line > last_covered + 1:
+                            # There's a gap - add segment
+                            seg_start = last_covered + 1
+                            seg_end = covered_line - 1
+                            if seg_start <= context_end and seg_start <= seg_end:
+                                segments.append((seg_start, min(seg_end, context_end)))
+                        last_covered = covered_line
+                
+                print(f"  Non-overlapping segments: {segments}")
+                
+                # Create scan context hunks for each non-overlapping segment
+                for seg_start, seg_end in segments:
+                    if seg_start <= seg_end:
+                        context_count = seg_end - seg_start + 1
+                        print(f"  Creating scan context hunk for [{seg_start}-{seg_end}] (scan line: {scan_line})")
+                        all_hunks.append({
+                            'type': 'scan_context',
+                            'new_start': seg_start,
+                            'new_count': context_count,
+                            'scan_line': scan_line
+                        })
         
         # Sort all hunks by start line without merging
         all_hunks.sort(key=lambda h: h['new_start'])
+        
+        print(f"\n===== FINAL HUNK LIST =====")
+        for i, hunk in enumerate(all_hunks):
+            hunk_end = hunk['new_start'] + hunk['new_count'] - 1
+            if hunk['type'] == 'real_diff':
+                print(f"  {i}: Real diff hunk [{hunk['new_start']}-{hunk_end}]")
+            else:
+                print(f"  {i}: Scan context hunk [{hunk['new_start']}-{hunk_end}] (scan line: {hunk['scan_line']})")
+        print(f"===========================\n")
         
         # Now render all hunks using unified logic
         html_lines = []
