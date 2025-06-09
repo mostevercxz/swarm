@@ -24,7 +24,7 @@ class GitCommitReviewGenerator:
     similar to Helix Swarm's review page.
     """
     
-    def __init__(self, repo_path, output_dir, commit_hash=None, template_dir=None, scan_results_file=None):
+    def __init__(self, repo_path, output_dir, commit_hash=None, template_dir=None, scan_results_dir=None):
         """
         Initialize the generator with repository path and output directory.
         
@@ -33,13 +33,13 @@ class GitCommitReviewGenerator:
             output_dir (str): Directory to output the generated HTML files
             commit_hash (str, optional): Specific commit hash to generate review for
             template_dir (str, optional): Directory containing custom templates
-            scan_results_file (str, optional): Path to the scan results JSON file
+            scan_results_dir (str, optional): Directory containing scan results JSON files
         """
         self.repo_path = os.path.abspath(repo_path)
         self.output_dir = os.path.abspath(output_dir)
         self.commit_hash = commit_hash
         self.template_dir = template_dir
-        self.scan_results_file = scan_results_file
+        self.scan_results_dir = scan_results_dir
         
         # Create output directory if it doesn't exist
         os.makedirs(self.output_dir, exist_ok=True)
@@ -51,6 +51,53 @@ class GitCommitReviewGenerator:
         # Verify git repository
         if not os.path.isdir(os.path.join(self.repo_path, '.git')):
             raise ValueError(f"Not a valid Git repository: {self.repo_path}")
+    
+    def load_scan_results(self):
+        """
+        Load scan results from all JSON files in the scan results directory.
+        
+        Returns:
+            list: Combined scan results from all JSON files
+        """
+        scan_results = []
+        
+        if not self.scan_results_dir:
+            return scan_results
+            
+        if not os.path.isdir(self.scan_results_dir):
+            print(f"Warning: Scan results directory does not exist: {self.scan_results_dir}")
+            return scan_results
+        
+        try:
+            # Find all JSON files in the directory
+            json_files = []
+            for filename in os.listdir(self.scan_results_dir):
+                if filename.lower().endswith('.json'):
+                    json_files.append(os.path.join(self.scan_results_dir, filename))
+            
+            print(f"Found {len(json_files)} JSON files in scan results directory")
+            
+            # Load and combine results from all JSON files
+            for json_file in json_files:
+                try:
+                    print(f"Loading scan results from: {json_file}")
+                    with open(json_file, 'r', encoding='utf-8') as f:
+                        file_results = json.load(f)
+                        if isinstance(file_results, list):
+                            scan_results.extend(file_results)
+                            print(f"  Loaded {len(file_results)} scan results")
+                        else:
+                            print(f"  Warning: JSON file does not contain a list: {json_file}")
+                except Exception as e:
+                    print(f"  Error loading scan results from {json_file}: {e}")
+                    continue
+            
+            print(f"Total scan results loaded: {len(scan_results)}")
+                    
+        except Exception as e:
+            print(f"Error accessing scan results directory {self.scan_results_dir}: {e}")
+        
+        return scan_results
     
     def run_git_command(self, command):
         """
@@ -1061,15 +1108,8 @@ class GitCommitReviewGenerator:
             except Exception:
                 new_file_contents[filename] = []
 
-        # Load scan results
-        scan_results = []
-        if self.scan_results_file:
-            try:
-                with open(self.scan_results_file, 'r', encoding='utf-8') as f:
-                    scan_results = json.load(f)
-            except Exception as e:
-                print(f"Warning: Could not load scan results from {self.scan_results_file}: {e}")
-                pass
+        # Load scan results from directory
+        scan_results = self.load_scan_results()
 
         # Generate HTML
         html_content = f'''<!DOCTYPE html>
@@ -1546,7 +1586,7 @@ def main():
     parser.add_argument('--commit', '-c', help='Specific commit hash to generate review for')
     parser.add_argument('--num-commits', '-n', type=int, default=1, help='Number of recent commits to generate reviews for')
     parser.add_argument('--template-dir', '-t', help='Directory containing custom templates')
-    parser.add_argument('--scan-results', '-s', help='Path to the scan results JSON file')
+    parser.add_argument('--scan-results', '-s', help='Directory containing scan results JSON files')
     
     args = parser.parse_args()
     
