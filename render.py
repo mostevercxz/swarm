@@ -155,6 +155,8 @@ class Render:
             border: 1px solid #e1e4e8;
             border-radius: 3px;
             margin-bottom: 20px;
+            max-height: 1000px;
+            overflow-y: auto;
         }
         .scan-result-item {
             padding: 8px;
@@ -179,6 +181,9 @@ class Render:
         .scan-result-item .suggestion {
             color: #586069;
             font-style: italic;
+        }
+        .priority-severe {
+            font-weight: bold;
         }
         .file-list {
             background-color: #fff;
@@ -761,18 +766,27 @@ class Render:
         
         for result in scan_results:
             severity_class = 'severe' if result['严重程度'] == '严重' else ''
+            show_text = '特别注意' if result['严重程度'] == '严重' else '需关注'
+            priority_class = 'priority-severe' if result['严重程度'] == '严重' else 'priority-normal'
             safe_filename = result['文件名'].replace('/', '-').replace('\\', '-').replace('.', '-')
             jump_id = f"scanresult-{safe_filename}-{result['行号']}"
             issue_count = result.get('问题数量', 1)
             count_text = f" ({issue_count} issues)" if issue_count > 1 else ""
             html_parts.append(f'''
                 <div class="scan-result-item {severity_class}" data-line="{result['行号']}" data-jump="{jump_id}">
+                    <div class="{priority_class}">[{show_text}]</div>
                     <div class="file-name">文件名：{html.escape(result['文件名'])}</div>
                     <div class="line-number">行号： {result['行号']}{count_text}</div>
-                    <div class="description">{html.escape(result['问题描述'])}</div>
-                    <div class="suggestion">{html.escape(result['修改意见'])}</div>
                 </div>
 ''')
+#             html_parts.append(f'''
+#                 <div class="scan-result-item {severity_class}" data-line="{result['行号']}" data-jump="{jump_id}">
+#                     <div class="file-name">文件名：{html.escape(result['文件名'])}</div>
+#                     <div class="line-number">行号： {result['行号']}{count_text}</div>
+#                     <div class="description">{html.escape(result['问题描述'])}</div>
+#                     <div class="suggestion">{html.escape(result['修改意见'])}</div>
+#                 </div>
+# ''')
         
         html_parts.append('</div>')
         return '\n'.join(html_parts)
