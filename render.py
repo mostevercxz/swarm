@@ -660,7 +660,7 @@ class Render:
         document.addEventListener('DOMContentLoaded', function() {
             // Debug logging function
             function gitDiffLog(...args) {
-                const debugLog = true; // Set to true for debugging
+                const debugLog = false; // Set to true for debugging
                 if (debugLog) {
                     console.log('[GitDiff Debug]', ...args);
                 }
@@ -863,6 +863,74 @@ class Render:
                 return text.replace(/[&<>"']/g, function(m) { return map[m]; });
             }
             
+            // Auto-scroll scan results panel to keep highlighted item visible
+            function scrollScanResultItemIntoView(scanResultItem) {
+                if (!scanResultItem) return;
+                
+                gitDiffLog('Auto-scrolling scan result item into view:', scanResultItem);
+                
+                // Find the scan results panel container
+                const scanResultsList = document.querySelector('.scan-results-list');
+                if (!scanResultsList) {
+                    gitDiffLog('ERROR: .scan-results-list not found for auto-scroll');
+                    return;
+                }
+                
+                // Get positions
+                const itemRect = scanResultItem.getBoundingClientRect();
+                const containerRect = scanResultsList.getBoundingClientRect();
+                
+                gitDiffLog('Scroll container info:', {
+                    containerTop: containerRect.top,
+                    containerBottom: containerRect.bottom,
+                    containerHeight: containerRect.height,
+                    containerScrollTop: scanResultsList.scrollTop,
+                    containerScrollHeight: scanResultsList.scrollHeight
+                });
+                
+                gitDiffLog('Item info:', {
+                    itemTop: itemRect.top,
+                    itemBottom: itemRect.bottom,
+                    itemHeight: itemRect.height
+                });
+                
+                // Check if item is visible within container
+                const itemTopRelativeToContainer = itemRect.top - containerRect.top;
+                const itemBottomRelativeToContainer = itemRect.bottom - containerRect.top;
+                
+                gitDiffLog('Item relative position:', {
+                    itemTopRelative: itemTopRelativeToContainer,
+                    itemBottomRelative: itemBottomRelativeToContainer,
+                    containerHeight: containerRect.height
+                });
+                
+                const isItemVisible = itemTopRelativeToContainer >= 0 && itemBottomRelativeToContainer <= containerRect.height;
+                gitDiffLog('Is item visible:', isItemVisible);
+                
+                if (!isItemVisible) {
+                    // Calculate scroll position to center the item in the container
+                    const itemCenterRelativeToDocument = itemRect.top + (itemRect.height / 2);
+                    const containerCenterRelativeToDocument = containerRect.top + (containerRect.height / 2);
+                    const scrollOffset = itemCenterRelativeToDocument - containerCenterRelativeToDocument;
+                    
+                    const newScrollTop = scanResultsList.scrollTop + scrollOffset;
+                    
+                    gitDiffLog('Scrolling scan results panel:', {
+                        currentScrollTop: scanResultsList.scrollTop,
+                        scrollOffset: scrollOffset,
+                        newScrollTop: newScrollTop
+                    });
+                    
+                    // Smooth scroll to the new position
+                    scanResultsList.scrollTo({
+                        top: Math.max(0, newScrollTop),
+                        behavior: 'smooth'
+                    });
+                } else {
+                    gitDiffLog('Item is already visible, no scroll needed');
+                }
+            }
+            
             // Auto-highlight scan results based on scroll position
             function updateScanResultHighlightOnScroll(scrollContainer, containerName) {
                 gitDiffLog('=== SCROLL EVENT TRIGGERED (' + (containerName || 'unknown') + ') ===');
@@ -983,6 +1051,9 @@ class Render:
                         // Add active class to the corresponding item
                         scanResultItem.classList.add('active');
                         gitDiffLog('Successfully highlighted scan result item:', scanResultId);
+                        
+                        // Auto-scroll the scan results panel to keep the highlighted item visible
+                        scrollScanResultItemIntoView(scanResultItem);
                     } else {
                         gitDiffLog('ERROR: Could not find scan result item with data-jump="' + scanResultId + '"');
                         // Debug: show all available data-jump values
