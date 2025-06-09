@@ -379,6 +379,7 @@ class Render:
             margin: 4px 0;
             border-radius: 4px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            font-size: 18px;
         }
         .scan-result-content.severe {
             background-color: #f8d7da;
@@ -416,7 +417,7 @@ class Render:
         .scan-result-suggestion {
             color: #6c757d;
             font-style: italic;
-            font-size: 12px;
+            font-size: 14px;
             line-height: 1.4;
         }
         /* Add severity badge to line number */
@@ -504,7 +505,7 @@ class Render:
         .scan-result-content {
             padding: 8px 12px;
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            font-size: 12px;
+            font-size: 18px;
             line-height: 1.4;
             word-wrap: break-word;
             overflow-wrap: break-word;
@@ -524,6 +525,7 @@ class Render:
             margin-bottom: 4px;
             color: #495057;
             white-space: pre-wrap;
+            max-width: 70%;
         }
         .scan-result-suggestion {
             color: #6c757d;
@@ -645,7 +647,7 @@ class Render:
         document.addEventListener('DOMContentLoaded', function() {
             // Debug logging function
             function gitDiffLog(...args) {
-                const debugLog = true; // Set to true for debugging
+                const debugLog = false; // Set to true for debugging
                 if (debugLog) {
                     console.log(...args);
                 }
@@ -899,27 +901,62 @@ class Render:
         """
         # Get the full new file content for context
         try:
-            # Try multiple possible locations for the file
-            file_paths = [
-                os.path.join(repo_path, filename),  # Try exact path
-                os.path.join(repo_path, 'trunk', filename),  # Try trunk path
-                os.path.join(os.path.dirname(repo_path), filename),  # Try parent directory
-                os.path.join(os.path.dirname(repo_path), 'trunk', filename)  # Try parent/trunk
-            ]
+            # Try multiple possible locations for the file with proper Windows path handling
+            file_paths = []
+            
+            # Normalize paths for Windows
+            repo_path_normalized = repo_path.replace('\\', '/')
+            repo_parent = os.path.dirname(repo_path)
+            repo_parent_normalized = repo_parent.replace('\\', '/')
+            
+            # Try exact path
+            file_paths.append(os.path.join(repo_path, filename))
+            
+            # Try with normalized repo path (this pattern worked in scan results loading)
+            file_paths.append(repo_path_normalized + '/' + filename.replace('\\', '/'))
+            
+            # Try trunk path 
+            file_paths.append(os.path.join(repo_path, 'trunk', filename))
+            
+            # Try parent directory
+            file_paths.append(os.path.join(repo_parent, filename))
+            
+            # Try parent/trunk
+            file_paths.append(os.path.join(repo_parent, 'trunk', filename))
+            
+            # Try with parent normalized (another pattern that might work)
+            file_paths.append(repo_parent_normalized + '/' + filename.replace('\\', '/'))
+            
+            # Try without src/ prefix if present
+            if filename.startswith('src/'):
+                filename_without_src = filename[4:]  # Remove 'src/' prefix
+                file_paths.append(os.path.join(repo_path, filename_without_src))
+                file_paths.append(repo_path_normalized + '/' + filename_without_src.replace('\\', '/'))
+                file_paths.append(os.path.join(repo_parent, filename_without_src))
+                file_paths.append(repo_parent_normalized + '/' + filename_without_src.replace('\\', '/'))
             
             full_lines = []
+            print(f"DEBUG: Looking for file {filename}")
+            print(f"DEBUG: repo_path = {repo_path}")
+            print(f"DEBUG: repo_path_normalized = {repo_path_normalized}")
+            print(f"DEBUG: repo_parent = {repo_parent}")
+            print(f"DEBUG: Trying these paths:")
             for file_path in file_paths:
+                print(f"  - {file_path} ({'EXISTS' if os.path.exists(file_path) else 'NOT FOUND'})")
                 if os.path.exists(file_path):
                     with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
                         full_lines = f.read().splitlines()
+                        print(f"DEBUG: Successfully loaded {len(full_lines)} lines from {file_path}")
                         break
             
             if not full_lines:
-                print(f"Warning: Could not find file {filename} in any of these locations: {file_paths}")
+                error_msg = f"CRITICAL ERROR: Could not find file {filename} in any of these locations: {file_paths}"
+                print(error_msg)
+                raise FileNotFoundError(error_msg)
                 
         except Exception as e:
             print(f"Error reading file {filename} from {file_paths}: {str(e)}")
-            full_lines = []
+            raise
         
         # Parse original diff hunks
         all_hunks = []
