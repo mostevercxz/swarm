@@ -1,2 +1,13 @@
 git-reviews
 builds
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pywz
+*.pyzw
+*.pyzwz
+reviews
+test_output
