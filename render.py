@@ -858,9 +858,12 @@ class Render:
         Returns:
             str: HTML for scan results panel
         """
+        # Sort scan results by filename and then by line number
+        sorted_scan_results = sorted(scan_results, key=lambda r: (r['文件名'], int(r['行号'])))
+        
         html_parts = ['<div class="scan-results-list">']
         
-        for result in scan_results:
+        for result in sorted_scan_results:
             severity_class = 'severe' if result['严重程度'] == '严重' else ''
             show_text = '特别注意' if result['严重程度'] == '严重' else '需关注'
             priority_class = 'priority-severe' if result['严重程度'] == '严重' else 'priority-normal'
@@ -974,6 +977,11 @@ class Render:
         for r in scan_results:
             if self._find_matching_scan_result([r], filename, r['行号']):
                 file_scan_results.append(r)
+        
+        print(f"before sort, File scan results: {file_scan_results}")
+        # Sort scan results by line number to ensure smaller line numbers come first
+        file_scan_results.sort(key=lambda r: int(r['行号']))
+        print(f"after sort, File scan results: {file_scan_results}")
         
         scan_lines = [int(r['行号']) for r in file_scan_results]
         print(f"\nScan lines to process: {scan_lines}")
