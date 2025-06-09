@@ -206,6 +206,7 @@ class Render:
             min-height: 400px;
         }
         .file-list-panel {
+            display: none;
             width: 320px;
             min-width: 220px;
             max-width: 400px;
@@ -238,12 +239,24 @@ class Render:
             border-bottom: 1px solid #e1e4e8;
             font-size: 12px;
             cursor: pointer;
+            transition: background-color 0.2s ease;
         }
         .scan-result-item:last-child {
             border-bottom: none;
         }
-        .scan-result-item.severe {
-            background-color: #ffebee;
+        .scan-result-item:hover {
+            background-color: #f6f8fa;
+        }
+        .scan-result-item.severe:hover {
+            background-color: #b5b9f1;
+        }
+        .scan-result-item.active {
+            background-color: #b5b9f1;
+            border-left: 3px solid #1976d2;
+        }
+        .scan-result-item.severe.active {
+            background-color: #b5b9f1;
+            border-left: 3px solid #d32f2f;
         }
         .scan-result-item .line-number {
             color: #586069;
@@ -675,6 +688,14 @@ class Render:
             // Scan result panel click to jump to code line
             document.querySelectorAll('.scan-result-item[data-jump]').forEach(function(item) {
                 item.addEventListener('click', function() {
+                    // Remove active class from all scan result items
+                    document.querySelectorAll('.scan-result-item').forEach(function(scanItem) {
+                        scanItem.classList.remove('active');
+                    });
+                    
+                    // Add active class to clicked item
+                    item.classList.add('active');
+                    
                     const jumpId = item.getAttribute('data-jump');
                     gitDiffLog('Scan result clicked, jumpId:', jumpId);
                     const codeElem = document.getElementById(jumpId);
