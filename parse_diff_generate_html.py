@@ -18,6 +18,52 @@ import shutil
 from pathlib import Path
 import json
 
+def is_git_or_svn(repo_path):
+    """
+    Determine if a repository is Git or SVN.
+    
+    Args:
+        repo_path (str): Path to the repository
+        
+    Returns:
+        str: 'git', 'svn', or 'unknown'
+    """
+    repo_path = os.path.abspath(repo_path)
+    
+    # Check for Git repository
+    if os.path.isdir(os.path.join(repo_path, '.git')):
+        return 'git'
+    
+    # Check for SVN repository by looking for .svn directory
+    if os.path.isdir(os.path.join(repo_path, '.svn')):
+        return 'svn'
+    
+    # Check if any parent directory contains .svn (for SVN working copies)
+    current_path = repo_path
+    while current_path != os.path.dirname(current_path):  # Stop at root
+        if os.path.isdir(os.path.join(current_path, '.svn')):
+            return 'svn'
+        current_path = os.path.dirname(current_path)
+    
+    # Try running svn info to see if it's an SVN working copy
+    try:
+        subprocess.run(['svn', 'info'], cwd=repo_path, check=True, 
+                      capture_output=True, text=True)
+        return 'svn'
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    
+    # Try running git status to see if it's a Git repository
+    try:
+        subprocess.run(['git', 'status'], cwd=repo_path, check=True, 
+                      capture_output=True, text=True)
+        return 'git'
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    
+    return 'unknown'
+
+
 class GitCommitReviewGenerator:
     """
     A class to generate a static HTML page for Git commit reviews
@@ -106,7 +152,14 @@ class GitCommitReviewGenerator:
                         
                         # Helper function to parse line number from line range
                         def parse_line_number(line_range, source_code):
-                            if line_range == '其他':
+                            if '-' in line_range:
+                                # Range like "3345-3348", take the starting line
+                                return int(line_range.split('-')[0])
+                            # if the string is a number
+                            elif line_range.isdigit():
+                                # Single line number like "3358"
+                                return int(line_range)
+                            else:
                                 # Find first line number in source code
                                 import re
                                 match = re.search(r'\n(\d+)', source_code)
@@ -114,12 +167,6 @@ class GitCommitReviewGenerator:
                                     return int(match.group(1))
                                 else:
                                     return 1  # Default to line 1 if no line number found
-                            elif '-' in line_range:
-                                # Range like "3345-3348", take the starting line
-                                return int(line_range.split('-')[0])
-                            else:
-                                # Single line number like "3358"
-                                return int(line_range)
                         
                         # Collect all issues for this file, then group by line number
                         file_issues = []
@@ -1690,26 +1737,48 @@ class GitCommitReviewGenerator:
 
 def main():
     """Main function to parse arguments and run the generator."""
-    parser = argparse.ArgumentParser(description='Generate static HTML pages for Git commit reviews')
-    parser.add_argument('repo_path', help='Path to the Git repository')
-    parser.add_argument('--output-dir', '-o', default='./git-reviews', help='Output directory for generated HTML files')
-    parser.add_argument('--commit', '-c', help='Specific commit hash to generate review for')
-    parser.add_argument('--num-commits', '-n', type=int, default=1, help='Number of recent commits to generate reviews for')
+    parser = argparse.ArgumentParser(description='Generate static HTML pages for Git/SVN commit/revision reviews')
+    parser.add_argument('repo_path', help='Path to the Git repository or SVN working copy')
+    parser.add_argument('--output-dir', '-o', default='./reviews', help='Output directory for generated HTML files')
+    parser.add_argument('--commit', '-c', help='Specific commit hash (Git) or revision number (SVN) to generate review for')
+    parser.add_argument('--num-commits', '-n', type=int, default=1, help='Number of recent commits/revisions to generate reviews for')
     parser.add_argument('--template-dir', '-t', help='Directory containing custom templates')
     parser.add_argument('--scan-results', '-s', help='Directory containing scan results JSON files')
     
     args = parser.parse_args()
     
     try:
-        generator = GitCommitReviewGenerator(
-            args.repo_path,
-            args.output_dir,
-            args.commit,
-            args.template_dir,
-            args.scan_results
-        )
+        # Detect repository type
+        repo_type = is_git_or_svn(args.repo_path)
         
-        generator.generate(args.num_commits)
+        if repo_type == 'git':
+            print(f"Detected Git repository at {args.repo_path}")
+            generator = GitCommitReviewGenerator(
+                args.repo_path,
+                args.output_dir,
+                args.commit,
+                args.template_dir,
+                args.scan_results
+            )
+            generator.generate(args.num_commits)
+            
+        elif repo_type == 'svn':
+            print(f"Detected SVN repository at {args.repo_path}")
+            # Import SVN generator
+            from svn_review_generator import SVNRevisionReviewGenerator
+            generator = SVNRevisionReviewGenerator(
+                args.repo_path,
+                args.output_dir,
+                args.commit,  # This will be treated as revision number for SVN
+                args.template_dir,
+                args.scan_results
+            )
+            generator.generate(args.num_commits)
+            
+        else:
+            print(f"Error: Unable to detect repository type at {args.repo_path}")
+            print("Please ensure the path points to a valid Git repository or SVN working copy")
+            sys.exit(1)
         
         print(f"\nReview pages generated successfully in {args.output_dir}")
         print(f"Open {os.path.join(args.output_dir, 'index.html')} in your browser to view the reviews")
