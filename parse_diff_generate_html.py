@@ -1245,6 +1245,7 @@ class GitCommitReviewGenerator:
                     segments = [(context_start, context_end)]
                 else:
                     # Find non-overlapping segments
+                    segments = []
                     last_covered = context_start - 1
                     for covered_line in overlapping_covered + [context_end + 1]:  # Add sentinel
                         if covered_line > last_covered + 1:
@@ -1252,7 +1253,8 @@ class GitCommitReviewGenerator:
                             seg_start = last_covered + 1
                             seg_end = covered_line - 1
                             if seg_start <= context_end and seg_start <= seg_end:
-                                segments.append((seg_start, min(seg_end, context_end)))
+                                final_seg = (seg_start, min(seg_end, context_end))
+                                segments.append(final_seg)
                         last_covered = covered_line
                 
                 print(f"  Non-overlapping segments: {segments}")
@@ -1385,7 +1387,10 @@ class GitCommitReviewGenerator:
         for ln in range(start_line, end_line + 1):
             content = full_lines[ln-1] if 0 <= ln-1 < len(full_lines) else ''
             
-            # Check if this line has a scan result
+            # Always render the original line content first
+            html_lines.append(f"<tr class='diff-context'><td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>{ln}</td><td class='diff-line-content'>{html.escape(content)}</td></tr>")
+            
+            # Check if this line has a scan result and add it as an additional row
             scan_result = next((r for r in scan_results if str(r['行号']) == str(ln) and r['文件名'] == filename), None)
             if scan_result:
                 safe_filename = filename.replace('/', '-').replace('\\', '-').replace('.', '-')
@@ -1394,9 +1399,7 @@ class GitCommitReviewGenerator:
                 cid_class = '' if scan_result['严重程度'] == '严重' else 'warning'
                 # Generate a fake CID number for display
                 cid_number = f"CID {hash(scan_result['问题描述']) % 1000000:06d}"
-                html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'>{ln}</td><td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-header'><span class='scan-result-cid {cid_class}'>{cid_number}</span><span>未检查的返回值 (CHECKED_RETURN)</span></div><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
-            else:
-                html_lines.append(f"<tr class='diff-context'><td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>{ln}</td><td class='diff-line-content'>{html.escape(content)}</td></tr>")
+                html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-header'><span class='scan-result-cid {cid_class}'>{cid_number}</span><span>未检查的返回值 (CHECKED_RETURN)</span></div><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
     
 
     
