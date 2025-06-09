@@ -54,6 +54,29 @@ class Render:
         
         return normalized.lower()
     
+    def _convert_urls_to_links(self, text):
+        """
+        Convert https URLs in text to clickable HTML links.
+        
+        Args:
+            text (str): Text that may contain https URLs
+            
+        Returns:
+            str: Text with URLs converted to HTML links
+        """
+        # First escape HTML to prevent XSS
+        escaped_text = html.escape(text)
+        
+        # URL pattern to match https links
+        url_pattern = r'https://[^\s<>"\']*'
+        
+        def replace_url(match):
+            url = match.group(0)
+            return f'<a href="{url}" target="_blank">{url}</a>'
+        
+        # Replace URLs with links
+        return re.sub(url_pattern, replace_url, escaped_text)
+    
     def _find_matching_scan_result(self, scan_results, filename, line_num):
         """
         Find scan result that matches the given filename and line number.
@@ -1562,7 +1585,7 @@ class Render:
 </head>
 <body>
     <div class="header">
-        <h1>{html.escape(commit_info['subject'])}</h1>
+        <h1>{self._convert_urls_to_links(commit_info['subject'])}</h1>
         <div class="{info_class}">
             <div class="{info_class}-item">
                 <div class="{info_class}-label">Author</div>
