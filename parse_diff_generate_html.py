@@ -24,7 +24,7 @@ class GitCommitReviewGenerator:
     similar to Helix Swarm's review page.
     """
     
-    def __init__(self, repo_path, output_dir, commit_hash=None, template_dir=None):
+    def __init__(self, repo_path, output_dir, commit_hash=None, template_dir=None, scan_results_file=None):
         """
         Initialize the generator with repository path and output directory.
         
@@ -33,11 +33,13 @@ class GitCommitReviewGenerator:
             output_dir (str): Directory to output the generated HTML files
             commit_hash (str, optional): Specific commit hash to generate review for
             template_dir (str, optional): Directory containing custom templates
+            scan_results_file (str, optional): Path to the scan results JSON file
         """
         self.repo_path = os.path.abspath(repo_path)
         self.output_dir = os.path.abspath(output_dir)
         self.commit_hash = commit_hash
         self.template_dir = template_dir
+        self.scan_results_file = scan_results_file
         
         # Create output directory if it doesn't exist
         os.makedirs(self.output_dir, exist_ok=True)
@@ -1061,11 +1063,13 @@ class GitCommitReviewGenerator:
 
         # Load scan results
         scan_results = []
-        try:
-            with open('scan_results1.json', 'r', encoding='utf-8') as f:
-                scan_results = json.load(f)
-        except Exception:
-            pass
+        if self.scan_results_file:
+            try:
+                with open(self.scan_results_file, 'r', encoding='utf-8') as f:
+                    scan_results = json.load(f)
+            except Exception as e:
+                print(f"Warning: Could not load scan results from {self.scan_results_file}: {e}")
+                pass
 
         # Generate HTML
         html_content = f'''<!DOCTYPE html>
@@ -1542,6 +1546,7 @@ def main():
     parser.add_argument('--commit', '-c', help='Specific commit hash to generate review for')
     parser.add_argument('--num-commits', '-n', type=int, default=1, help='Number of recent commits to generate reviews for')
     parser.add_argument('--template-dir', '-t', help='Directory containing custom templates')
+    parser.add_argument('--scan-results', '-s', help='Path to the scan results JSON file')
     
     args = parser.parse_args()
     
@@ -1550,7 +1555,8 @@ def main():
             args.repo_path,
             args.output_dir,
             args.commit,
-            args.template_dir
+            args.template_dir,
+            args.scan_results
         )
         
         generator.generate(args.num_commits)
