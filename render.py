@@ -1125,10 +1125,23 @@ class Render:
             
             gitDiffLog('Total scroll listeners added:', listenersAdded);
             
-            // Also run once on page load to set initial state
-            gitDiffLog('Running initial scan result highlight check');
+            // Set initial state to highlight first scan result item
+            gitDiffLog('Setting initial scan result highlight to first item');
             setTimeout(function() {
-                updateScanResultHighlightOnScroll(diffPanel || body, 'initial');
+                // Find the first scan result item and highlight it
+                const firstScanResultItem = document.querySelector('.scan-result-item[data-jump]');
+                if (firstScanResultItem) {
+                    // Remove active class from all scan result items
+                    document.querySelectorAll('.scan-result-item').forEach(function(item) {
+                        item.classList.remove('active');
+                    });
+                    
+                    // Add active class to first item
+                    firstScanResultItem.classList.add('active');
+                    gitDiffLog('First scan result item highlighted:', firstScanResultItem.getAttribute('data-jump'));
+                } else {
+                    gitDiffLog('No scan result items found for initial highlighting');
+                }
             }, 500);
         });
         """
