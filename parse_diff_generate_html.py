@@ -1260,8 +1260,8 @@ class GitCommitReviewGenerator:
             count_text = f" ({issue_count} issues)" if issue_count > 1 else ""
             html_content += f'''
                 <div class="scan-result-item {severity_class}" data-line="{result['行号']}" data-jump="{jump_id}">
-                    <div class="line-number">Line {result['行号']}{count_text}</div>
-                    <div class="file-name">文件名: {html.escape(result['文件名'])}</div>
+                    <div class="file-name">文件名：{html.escape(result['文件名'])}</div>
+                    <div class="line-number">行号： {result['行号']}{count_text}</div>
                     <div class="description">{html.escape(result['问题描述'])}</div>
                     <div class="suggestion">{html.escape(result['修改意见'])}</div>
                 </div>
