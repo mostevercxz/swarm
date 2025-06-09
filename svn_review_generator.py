@@ -107,7 +107,13 @@ class SVNRevisionReviewGenerator:
                         
                         # Helper function to parse line number from line range
                         def parse_line_number(line_range, source_code):
-                            if line_range == '其他':
+                            if '-' in line_range:
+                                # Range like "3345-3348", take the starting line
+                                return int(line_range.split('-')[0])
+                            elif line_range.isdigit():
+                                # Single line number like "3358"
+                                return int(line_range)
+                            else:
                                 # Find first line number in source code
                                 import re
                                 match = re.search(r'\n(\d+)', source_code)
@@ -115,12 +121,6 @@ class SVNRevisionReviewGenerator:
                                     return int(match.group(1))
                                 else:
                                     return 1  # Default to line 1 if no line number found
-                            elif '-' in line_range:
-                                # Range like "3345-3348", take the starting line
-                                return int(line_range.split('-')[0])
-                            else:
-                                # Single line number like "3358"
-                                return int(line_range)
                         
                         # Collect all issues for this file, then group by line number
                         file_issues = []
