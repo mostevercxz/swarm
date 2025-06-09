@@ -660,9 +660,9 @@ class Render:
         document.addEventListener('DOMContentLoaded', function() {
             // Debug logging function
             function gitDiffLog(...args) {
-                const debugLog = false; // Set to true for debugging
+                const debugLog = true; // Set to true for debugging
                 if (debugLog) {
-                    console.log(...args);
+                    console.log('[GitDiff Debug]', ...args);
                 }
             }
             // Folder expand/collapse
@@ -862,6 +862,203 @@ class Render:
                 var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
                 return text.replace(/[&<>"']/g, function(m) { return map[m]; });
             }
+            
+            // Auto-highlight scan results based on scroll position
+            function updateScanResultHighlightOnScroll(scrollContainer, containerName) {
+                gitDiffLog('=== SCROLL EVENT TRIGGERED (' + (containerName || 'unknown') + ') ===');
+                
+                // Determine the actual scroll container to use
+                let actualContainer = scrollContainer;
+                if (!actualContainer) {
+                    actualContainer = document.querySelector('.diff-panel') || document.body;
+                }
+                
+                gitDiffLog('Using scroll container:', containerName || 'fallback', actualContainer);
+                
+                // Calculate viewport based on the container
+                let viewportTop, viewportBottom, viewportCenter, clientHeight;
+                
+                if (actualContainer === window || actualContainer === document.body || actualContainer === document.documentElement) {
+                    // For window/body scroll, use window dimensions
+                    viewportTop = window.pageYOffset || document.documentElement.scrollTop;
+                    clientHeight = window.innerHeight;
+                    viewportBottom = viewportTop + clientHeight;
+                    viewportCenter = viewportTop + (clientHeight / 2);
+                    gitDiffLog('Using window scroll - pageYOffset:', viewportTop, 'innerHeight:', clientHeight);
+                } else {
+                    // For element scroll, use element dimensions
+                    viewportTop = actualContainer.scrollTop;
+                    clientHeight = actualContainer.clientHeight;
+                    viewportBottom = viewportTop + clientHeight;
+                    viewportCenter = viewportTop + (clientHeight / 2);
+                    gitDiffLog('Using element scroll - scrollTop:', viewportTop, 'clientHeight:', clientHeight);
+                }
+                
+                gitDiffLog('Viewport - Top:', viewportTop, 'Center:', viewportCenter, 'Bottom:', viewportBottom, 'ClientHeight:', clientHeight);
+                
+                // Find all scan result elements in the code
+                const scanResultElements = document.querySelectorAll('[id^="scanresult-"]');
+                gitDiffLog('Total scan result elements found:', scanResultElements.length);
+                
+                if (scanResultElements.length === 0) {
+                    gitDiffLog('WARNING: No scan result elements found with id starting with "scanresult-"');
+                    // Let's check what IDs are actually available
+                    const allElementsWithId = document.querySelectorAll('[id]');
+                    gitDiffLog('All elements with IDs:', Array.from(allElementsWithId).map(el => el.id));
+                    return;
+                }
+                
+                let closestScanResult = null;
+                let closestDistance = Infinity;
+                let visibleCount = 0;
+                
+                scanResultElements.forEach(function(element, index) {
+                    try {
+                        const rect = element.getBoundingClientRect();
+                        
+                        // Calculate element position relative to the scroll container
+                        let elementTop, elementBottom, elementCenter;
+                        
+                        if (actualContainer === window || actualContainer === document.body || actualContainer === document.documentElement) {
+                            // For window/body scroll, use absolute position
+                            elementTop = rect.top + viewportTop;
+                            elementBottom = elementTop + rect.height;
+                            elementCenter = elementTop + (rect.height / 2);
+                        } else {
+                            // For element scroll, calculate relative to container
+                            const containerRect = actualContainer.getBoundingClientRect();
+                            elementTop = rect.top - containerRect.top + actualContainer.scrollTop;
+                            elementBottom = elementTop + rect.height;
+                            elementCenter = elementTop + (rect.height / 2);
+                        }
+                        
+                        // Calculate distance from viewport center
+                        const distance = Math.abs(elementCenter - viewportCenter);
+                        
+                        // Check if element is visible in viewport
+                        const isVisible = elementTop < viewportBottom && elementBottom > viewportTop;
+                        
+                        gitDiffLog('Element ' + (index + 1) + '/' + scanResultElements.length + ':', {
+                            id: element.id,
+                            elementTop: elementTop,
+                            elementBottom: elementBottom,
+                            elementCenter: elementCenter,
+                            distance: distance,
+                            isVisible: isVisible,
+                            rectHeight: rect.height
+                        });
+                        
+                        if (isVisible) {
+                            visibleCount++;
+                            if (distance < closestDistance) {
+                                closestDistance = distance;
+                                closestScanResult = element;
+                                gitDiffLog('New closest scan result:', element.id, 'Distance:', distance);
+                            }
+                        }
+                    } catch (error) {
+                        gitDiffLog('Error processing element:', element.id, error);
+                    }
+                });
+                
+                gitDiffLog('Summary - Visible elements:', visibleCount, 'Closest:', closestScanResult ? closestScanResult.id : 'none');
+                
+                if (closestScanResult) {
+                    const scanResultId = closestScanResult.id;
+                    gitDiffLog('Processing closest scan result:', scanResultId);
+                    
+                    // Find corresponding scan result item in the panel
+                    const scanResultItem = document.querySelector(`.scan-result-item[data-jump="${scanResultId}"]`);
+                    gitDiffLog('Found scan result item in panel:', !!scanResultItem);
+                    
+                    if (scanResultItem) {
+                        // Remove active class from all scan result items
+                        const allScanItems = document.querySelectorAll('.scan-result-item');
+                        gitDiffLog('Total scan result items in panel:', allScanItems.length);
+                        
+                        allScanItems.forEach(function(item) {
+                            item.classList.remove('active');
+                        });
+                        
+                        // Add active class to the corresponding item
+                        scanResultItem.classList.add('active');
+                        gitDiffLog('Successfully highlighted scan result item:', scanResultId);
+                    } else {
+                        gitDiffLog('ERROR: Could not find scan result item with data-jump="' + scanResultId + '"');
+                        // Debug: show all available data-jump values
+                        const allScanItems = document.querySelectorAll('.scan-result-item[data-jump]');
+                        gitDiffLog('Available data-jump values:', Array.from(allScanItems).map(item => item.getAttribute('data-jump')));
+                    }
+                } else {
+                    gitDiffLog('No closest scan result found - no elements visible or no elements exist');
+                }
+                
+                gitDiffLog('=== SCROLL EVENT COMPLETED ===');
+            }
+            
+            // Add scroll event listener with throttling
+            let scrollTimeout;
+            
+            // Try to find the actual scrollable container
+            const diffPanel = document.querySelector('.diff-panel');
+            const reviewMain = document.querySelector('.review-main');
+            const body = document.body;
+            const htmlElement = document.documentElement;
+            
+            gitDiffLog('Container elements found:');
+            gitDiffLog('- .diff-panel:', !!diffPanel);
+            gitDiffLog('- .review-main:', !!reviewMain);
+            gitDiffLog('- body:', !!body);
+            gitDiffLog('- html:', !!htmlElement);
+            
+            // Check which elements are actually scrollable
+            function checkScrollable(element, name) {
+                if (!element) return false;
+                const hasVerticalScroll = element.scrollHeight > element.clientHeight;
+                const overflowY = window.getComputedStyle(element).overflowY;
+                gitDiffLog(name + ' scroll info:', {
+                    scrollHeight: element.scrollHeight,
+                    clientHeight: element.clientHeight,
+                    hasVerticalScroll: hasVerticalScroll,
+                    overflowY: overflowY,
+                    scrollTop: element.scrollTop
+                });
+                return hasVerticalScroll;
+            }
+            
+            checkScrollable(diffPanel, '.diff-panel');
+            checkScrollable(reviewMain, '.review-main');
+            checkScrollable(body, 'body');
+            checkScrollable(htmlElement, 'html');
+            
+            function setupScrollListener(element, name) {
+                if (!element) return false;
+                
+                gitDiffLog('Setting up scroll listener on:', name);
+                element.addEventListener('scroll', function() {
+                    gitDiffLog('SCROLL EVENT FIRED on ' + name + ' - scrollTop:', element.scrollTop);
+                    clearTimeout(scrollTimeout);
+                    scrollTimeout = setTimeout(function() {
+                        updateScanResultHighlightOnScroll(element, name);
+                    }, 100);
+                });
+                return true;
+            }
+            
+            // Try to set up scroll listeners on multiple potential containers
+            let listenersAdded = 0;
+            if (setupScrollListener(diffPanel, '.diff-panel')) listenersAdded++;
+            if (setupScrollListener(reviewMain, '.review-main')) listenersAdded++;
+            if (setupScrollListener(body, 'body')) listenersAdded++;
+            if (setupScrollListener(window, 'window')) listenersAdded++;
+            
+            gitDiffLog('Total scroll listeners added:', listenersAdded);
+            
+            // Also run once on page load to set initial state
+            gitDiffLog('Running initial scan result highlight check');
+            setTimeout(function() {
+                updateScanResultHighlightOnScroll(diffPanel || body, 'initial');
+            }, 500);
         });
         """
         
