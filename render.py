@@ -1104,6 +1104,9 @@ class Render:
         cur_old = int(match.group('old_start')) if match else None
         cur_new = hunk['new_start']
         
+        # Track which scan results have already been rendered in this hunk to avoid duplicates
+        rendered_scan_results = set()
+        
         # Render hunk lines
         j = hunk['diff_idx'] + 1
         while j < len(lines) and not lines[j].startswith('@@'):
@@ -1122,17 +1125,25 @@ class Render:
                 scan_result = self._find_matching_scan_result(scan_results, filename, scan_line_num)
                 print(f"Scan result: {scan_result}, filename: {filename}, scan_line_num: {scan_line_num}")
                 if scan_result:
-                    # Use the scan result's filename to ensure jump ID consistency
-                    safe_filename = scan_result['文件名'].replace('/', '-').replace('\\', '-').replace('.', '-')
-                    jump_id = f"scanresult-{safe_filename}-{scan_line_num}"
-                    severity_class = 'severe' if scan_result['严重程度'] == '严重' else ''
-                    cid_class = '' if scan_result['严重程度'] == '严重' else 'warning'
-                    # Generate a fake CID number for display
-                    cid_number = f"CID {hash(scan_result['问题描述']) % 1000000:06d}"
-                    # Get the count of issues
-                    issue_count = scan_result.get('问题数量', 1)
-                    count_text = f"({issue_count} issues)" if issue_count > 1 else ""
-                    html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-header'><span class='scan-result-cid {cid_class}'>{cid_number}</span><span>需特别注意</span><span class='scan-result-count'>{count_text}</span></div><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
+                    # Create a unique key for this scan result
+                    scan_result_key = (scan_result['文件名'], scan_result['行号'], scan_result['问题描述'])
+                    
+                    # Only render if we haven't rendered this scan result in this hunk yet
+                    if scan_result_key not in rendered_scan_results:
+                        rendered_scan_results.add(scan_result_key)
+                        
+                        # Use the scan result's filename to ensure jump ID consistency
+                        safe_filename = scan_result['文件名'].replace('/', '-').replace('\\', '-').replace('.', '-')
+                        jump_id = f"scanresult-{safe_filename}-{scan_line_num}"
+                        remind_text = '需特别注意' if scan_result['严重程度'] == '严重' else '需注意'
+                        severity_class = 'severe' if scan_result['严重程度'] == '严重' else ''
+                        cid_class = '' if scan_result['严重程度'] == '严重' else 'warning'
+                        # Generate a fake CID number for display
+                        cid_number = f"CID {hash(scan_result['问题描述']) % 1000000:06d}"
+                        # Get the count of issues
+                        issue_count = scan_result.get('问题数量', 1)
+                        count_text = f"({issue_count} issues)" if issue_count > 1 else ""
+                        html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-header'><span class='scan-result-cid {cid_class}'>{cid_number}</span><span>{remind_text}</span><span class='scan-result-count'>{count_text}</span></div><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
             
             # Render the actual diff line
             if l.startswith('+'):
