@@ -28,6 +28,81 @@ class Render:
         self.output_dir = output_dir
         self.assets_dir = assets_dir
     
+    def _normalize_path_for_matching(self, file_path):
+        """
+        Normalize file paths for matching between scan results and SVN paths.
+        
+        Args:
+            file_path (str): The file path to normalize
+            
+        Returns:
+            str: Normalized path for matching
+        """
+        # Convert to forward slashes
+        normalized = file_path.replace('\\', '/')
+        
+        # Remove drive letters and common prefixes
+        prefixes_to_remove = [
+            r'^[A-Za-z]:/[^/]+/',  # Remove drive + first directory (e.g., "D:/serverdev/")
+            r'^[A-Za-z]:\\[^\\]+\\',  # Remove drive + first directory (Windows style)
+            r'^src/',  # Remove src/ prefix
+            r'^trunk/',  # Remove trunk/ prefix
+        ]
+        
+        for prefix_pattern in prefixes_to_remove:
+            normalized = re.sub(prefix_pattern, '', normalized, flags=re.IGNORECASE)
+        
+        return normalized.lower()
+    
+    def _find_matching_scan_result(self, scan_results, filename, line_num):
+        """
+        Find scan result that matches the given filename and line number.
+        Uses both exact matching and normalized path matching.
+        
+        Args:
+            scan_results (list): List of scan results
+            filename (str): The filename to match
+            line_num (int): The line number to match
+            
+        Returns:
+            dict or None: Matching scan result or None if not found
+        """
+        line_str = str(line_num)
+        
+        # First try exact filename match
+        exact_match = next((r for r in scan_results 
+                           if str(r['行号']) == line_str and r['文件名'] == filename), None)
+        if exact_match:
+            return exact_match
+        
+        # Try normalized path matching
+        normalized_target = self._normalize_path_for_matching(filename)
+        
+        for result in scan_results:
+            if str(result['行号']) == line_str:
+                normalized_scan_path = self._normalize_path_for_matching(result['文件名'])
+                if normalized_scan_path == normalized_target:
+                    return result
+                
+                # Also try basename matching as fallback
+                if os.path.basename(result['文件名']) == os.path.basename(filename):
+                    return result
+        
+        # Try custom path mappings (add your specific mappings here)
+        custom_mappings = {
+            # Example: Map scan result path to SVN path
+            # 'D:\\serverdev\\Server\\MatchServer\\MatchManager.cpp': 'src/Server/AllPlayerTeamMatchServer/AllPlayerTeamMatchCourse.cpp',
+        }
+        
+        # Check if SVN filename has a mapping to a scan result path
+        for scan_path, svn_path in custom_mappings.items():
+            if svn_path == filename:
+                for result in scan_results:
+                    if str(result['行号']) == line_str and result['文件名'] == scan_path:
+                        return result
+        
+        return None
+    
     def _build_file_tree(self, files_changed):
         """
         Build a nested dictionary representing the folder/file tree from a flat file list.
@@ -599,11 +674,19 @@ class Render:
             document.querySelectorAll('.scan-result-item[data-jump]').forEach(function(item) {
                 item.addEventListener('click', function() {
                     const jumpId = item.getAttribute('data-jump');
+                    gitDiffLog('Scan result clicked, jumpId:', jumpId);
                     const codeElem = document.getElementById(jumpId);
+                    gitDiffLog('Found code element:', codeElem);
                     if (codeElem) {
                         codeElem.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         codeElem.classList.add('scan-result-highlight');
                         setTimeout(() => codeElem.classList.remove('scan-result-highlight'), 1600);
+                        gitDiffLog('Scrolled to element successfully');
+                    } else {
+                        gitDiffLog('ERROR: Could not find element with ID:', jumpId);
+                        // Debug: list all scan-result elements
+                        const allScanResults = document.querySelectorAll('[id^="scanresult-"]');
+                        gitDiffLog('Available scan result IDs:', Array.from(allScanResults).map(el => el.id));
                     }
                 });
             });
@@ -886,7 +969,13 @@ class Render:
         
         print(f"\nTotal covered lines by real diffs: {sorted(covered_lines)}")
         
-        scan_lines = [int(r['行号']) for r in scan_results if r['文件名'] == filename]
+        # Filter scan results for this file using proper path matching
+        file_scan_results = []
+        for r in scan_results:
+            if self._find_matching_scan_result([r], filename, r['行号']):
+                file_scan_results.append(r)
+        
+        scan_lines = [int(r['行号']) for r in file_scan_results]
         print(f"\nScan lines to process: {scan_lines}")
         
         for scan_line in scan_lines:
@@ -1022,9 +1111,11 @@ class Render:
                 scan_line_num = cur_new
                 
             if scan_line_num:
-                scan_result = next((r for r in scan_results if str(r['行号']) == str(scan_line_num) and r['文件名'] == filename), None)
+                scan_result = self._find_matching_scan_result(scan_results, filename, scan_line_num)
+                print(f"Scan result: {scan_result}, filename: {filename}, scan_line_num: {scan_line_num}")
                 if scan_result:
-                    safe_filename = filename.replace('/', '-').replace('\\', '-').replace('.', '-')
+                    # Use the scan result's filename to ensure jump ID consistency
+                    safe_filename = scan_result['文件名'].replace('/', '-').replace('\\', '-').replace('.', '-')
                     jump_id = f"scanresult-{safe_filename}-{scan_line_num}"
                     severity_class = 'severe' if scan_result['严重程度'] == '严重' else ''
                     cid_class = '' if scan_result['严重程度'] == '严重' else 'warning'
@@ -1063,9 +1154,10 @@ class Render:
             html_lines.append(f"<tr class='diff-context'><td class='diff-sign'>&nbsp;</td><td class='diff-line-num'></td><td class='diff-line-num'>{ln}</td><td class='diff-line-content'>{html.escape(content)}</td></tr>")
             
             # Check if this line has a scan result and add it as an additional row
-            scan_result = next((r for r in scan_results if str(r['行号']) == str(ln) and r['文件名'] == filename), None)
+            scan_result = self._find_matching_scan_result(scan_results, filename, ln)
             if scan_result:
-                safe_filename = filename.replace('/', '-').replace('\\', '-').replace('.', '-')
+                # Use the scan result's filename to ensure jump ID consistency  
+                safe_filename = scan_result['文件名'].replace('/', '-').replace('\\', '-').replace('.', '-')
                 jump_id = f"scanresult-{safe_filename}-{ln}"
                 severity_class = 'severe' if scan_result['严重程度'] == '严重' else ''
                 cid_class = '' if scan_result['严重程度'] == '严重' else 'warning'
@@ -1160,4 +1252,33 @@ class Render:
 </body>
 </html>
 '''
-        return html_content 
+        return html_content
+    
+    def debug_path_matching(self, scan_results, svn_files):
+        """
+        Debug function to show how paths are being normalized and matched.
+        
+        Args:
+            scan_results (list): List of scan results
+            svn_files (list): List of SVN file paths
+        """
+        print("\n===== PATH MATCHING DEBUG =====")
+        
+        print("\nScan Result Paths:")
+        for result in scan_results:
+            original = result['文件名']
+            normalized = self._normalize_path_for_matching(original)
+            print(f"  Original: {original}")
+            print(f"  Normalized: {normalized}")
+            print(f"  Basename: {os.path.basename(original)}")
+            print()
+        
+        print("SVN File Paths:")
+        for svn_file in svn_files:
+            normalized = self._normalize_path_for_matching(svn_file)
+            print(f"  Original: {svn_file}")
+            print(f"  Normalized: {normalized}")
+            print(f"  Basename: {os.path.basename(svn_file)}")
+            print()
+        
+        print("================================\n") 
