@@ -1152,7 +1152,7 @@ class Render:
         # Sort scan results by filename and then by line number
         sorted_scan_results = sorted(scan_results, key=lambda r: (r['文件名'], int(r['行号'])))
         
-        html_parts = ['<div class="scan-results-list">']
+        html_parts = ['<h2>本次提交问题列表</h2>', '<div class="scan-results-list">']
         
         for result in sorted_scan_results:
             severity_class = 'severe' if result['严重程度'] == '严重' else ''
