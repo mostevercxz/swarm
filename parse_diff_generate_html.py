@@ -82,12 +82,75 @@ class GitCommitReviewGenerator:
                 try:
                     print(f"Loading scan results from: {json_file}")
                     with open(json_file, 'r', encoding='utf-8') as f:
-                        file_results = json.load(f)
-                        if isinstance(file_results, list):
-                            scan_results.extend(file_results)
-                            print(f"  Loaded {len(file_results)} scan results")
-                        else:
-                            print(f"  Warning: JSON file does not contain a list: {json_file}")
+                        file_data = json.load(f)
+                        
+                        # Extract filename from the 'file' field
+                        if 'file' not in file_data:
+                            print(f"  Warning: No 'file' field found in {json_file}")
+                            continue
+                            
+                        filename = file_data['file']
+                        # Convert Windows path to Unix path for consistency
+                        filename = filename.replace('\\', '/')
+                        # Extract relative path if it's an absolute path
+                        if ':' in filename:
+                            # Try to extract relative path from absolute Windows path
+                            parts = filename.split('/')
+                            # Look for common project directory names
+                            for i, part in enumerate(parts):
+                                if part in ['Server', 'src', 'source', 'code']:
+                                    filename = '/'.join(parts[i:])
+                                    break
+                        
+                        source_code = file_data.get('源码', '')
+                        
+                        # Helper function to parse line number from line range
+                        def parse_line_number(line_range, source_code):
+                            if line_range == '其他':
+                                # Find first line number in source code
+                                import re
+                                match = re.search(r'\n(\d+)', source_code)
+                                if match:
+                                    return int(match.group(1))
+                                else:
+                                    return 1  # Default to line 1 if no line number found
+                            elif '-' in line_range:
+                                # Range like "3345-3348", take the starting line
+                                return int(line_range.split('-')[0])
+                            else:
+                                # Single line number like "3358"
+                                return int(line_range)
+                        
+                        # Process "可能存在的问题" (general severity)
+                        if '可能存在的问题' in file_data:
+                            for issue in file_data['可能存在的问题']:
+                                line_range = issue.get('行号范围', '1')
+                                line_number = parse_line_number(line_range, source_code)
+                                
+                                scan_results.append({
+                                    '文件名': filename,
+                                    '行号': line_number,
+                                    '问题描述': issue.get('问题描述', ''),
+                                    '修改意见': issue.get('修改意见', ''),
+                                    '严重程度': '一般'
+                                })
+                        
+                        # Process "肯定存在的问题" (severe)
+                        if '肯定存在的问题' in file_data:
+                            for issue in file_data['肯定存在的问题']:
+                                line_range = issue.get('行号范围', '1')
+                                line_number = parse_line_number(line_range, source_code)
+                                
+                                scan_results.append({
+                                    '文件名': filename,
+                                    '行号': line_number,
+                                    '问题描述': issue.get('问题描述', ''),
+                                    '修改意见': issue.get('修改意见', ''),
+                                    '严重程度': '严重'
+                                })
+                        
+                        print(f"  Loaded {len(file_data.get('可能存在的问题', []) + file_data.get('肯定存在的问题', []))} scan results for {filename}")
+                        
                 except Exception as e:
                     print(f"  Error loading scan results from {json_file}: {e}")
                     continue
