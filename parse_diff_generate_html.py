@@ -1512,7 +1512,7 @@ class GitCommitReviewGenerator:
                     # Get the count of issues
                     issue_count = scan_result.get('问题数量', 1)
                     count_text = f"({issue_count} issues)" if issue_count > 1 else ""
-                    html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-header'><span class='scan-result-cid {cid_class}'>{cid_number}</span><span>未检查的返回值 (CHECKED_RETURN)</span><span class='scan-result-count'>{count_text}</span></div><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
+                    html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-header'><span class='scan-result-cid {cid_class}'>{cid_number}</span><span>问题待分类(v0.3版本后加入)</span><span class='scan-result-count'>{count_text}</span></div><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
             
             # Render the actual diff line
             if l.startswith('+'):
