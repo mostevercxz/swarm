@@ -121,13 +121,16 @@ class GitCommitReviewGenerator:
                                 # Single line number like "3358"
                                 return int(line_range)
                         
+                        # Collect all issues for this file, then group by line number
+                        file_issues = []
+                        
                         # Process "可能存在的问题" (general severity)
                         if '可能存在的问题' in file_data:
                             for issue in file_data['可能存在的问题']:
                                 line_range = issue.get('行号范围', '1')
                                 line_number = parse_line_number(line_range, source_code)
                                 
-                                scan_results.append({
+                                file_issues.append({
                                     '文件名': filename,
                                     '行号': line_number,
                                     '问题描述': issue.get('问题描述', ''),
@@ -141,7 +144,7 @@ class GitCommitReviewGenerator:
                                 line_range = issue.get('行号范围', '1')
                                 line_number = parse_line_number(line_range, source_code)
                                 
-                                scan_results.append({
+                                file_issues.append({
                                     '文件名': filename,
                                     '行号': line_number,
                                     '问题描述': issue.get('问题描述', ''),
@@ -149,7 +152,43 @@ class GitCommitReviewGenerator:
                                     '严重程度': '严重'
                                 })
                         
-                        print(f"  Loaded {len(file_data.get('可能存在的问题', []) + file_data.get('肯定存在的问题', []))} scan results for {filename}")
+                        # Group issues by line number and combine them
+                        from collections import defaultdict
+                        grouped_issues = defaultdict(list)
+                        for issue in file_issues:
+                            grouped_issues[issue['行号']].append(issue)
+                        
+                        # Create combined scan results for each line
+                        for line_number, issues in grouped_issues.items():
+                            # Determine the most severe level
+                            has_severe = any(issue['严重程度'] == '严重' for issue in issues)
+                            severity = '严重' if has_severe else '一般'
+                            
+                            # Format issues nicely
+                            if len(issues) == 1:
+                                # Single issue, use original format
+                                combined_description = issues[0]['问题描述']
+                                combined_suggestion = issues[0]['修改意见']
+                            else:
+                                # Multiple issues, use structured format
+                                formatted_parts = []
+                                for i, issue in enumerate(issues, 1):
+                                    part = f"问题{i}：{issue['严重程度']}\n问题描述：{issue['问题描述']}\n修改意见：{issue['修改意见']}"
+                                    formatted_parts.append(part)
+                                
+                                combined_description = '\n============\n'.join(formatted_parts)
+                                combined_suggestion = f"共{len(issues)}个问题需要处理，请查看详细描述"
+                            
+                            scan_results.append({
+                                '文件名': filename,
+                                '行号': line_number,
+                                '问题描述': combined_description,
+                                '修改意见': combined_suggestion,
+                                '严重程度': severity,
+                                '问题数量': len(issues)  # Track how many issues were combined
+                            })
+                        
+                        print(f"  Loaded {len(file_issues)} scan results grouped into {len(grouped_issues)} unique lines for {filename}")
                         
                 except Exception as e:
                     print(f"  Error loading scan results from {json_file}: {e}")
@@ -1217,9 +1256,11 @@ class GitCommitReviewGenerator:
             severity_class = 'severe' if result['严重程度'] == '严重' else ''
             safe_filename = result['文件名'].replace('/', '-').replace('\\', '-').replace('.', '-')
             jump_id = f"scanresult-{safe_filename}-{result['行号']}"
+            issue_count = result.get('问题数量', 1)
+            count_text = f" ({issue_count} issues)" if issue_count > 1 else ""
             html_content += f'''
                 <div class="scan-result-item {severity_class}" data-line="{result['行号']}" data-jump="{jump_id}">
-                    <div class="line-number">Line {result['行号']}</div>
+                    <div class="line-number">Line {result['行号']}{count_text}</div>
                     <div class="file-name">文件名: {html.escape(result['文件名'])}</div>
                     <div class="description">{html.escape(result['问题描述'])}</div>
                     <div class="suggestion">{html.escape(result['修改意见'])}</div>
@@ -1468,7 +1509,10 @@ class GitCommitReviewGenerator:
                     cid_class = '' if scan_result['严重程度'] == '严重' else 'warning'
                     # Generate a fake CID number for display
                     cid_number = f"CID {hash(scan_result['问题描述']) % 1000000:06d}"
-                    html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-header'><span class='scan-result-cid {cid_class}'>{cid_number}</span><span>未检查的返回值 (CHECKED_RETURN)</span></div><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
+                    # Get the count of issues
+                    issue_count = scan_result.get('问题数量', 1)
+                    count_text = f"({issue_count} issues)" if issue_count > 1 else ""
+                    html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-header'><span class='scan-result-cid {cid_class}'>{cid_number}</span><span>未检查的返回值 (CHECKED_RETURN)</span><span class='scan-result-count'>{count_text}</span></div><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
             
             # Render the actual diff line
             if l.startswith('+'):
@@ -1506,7 +1550,10 @@ class GitCommitReviewGenerator:
                 cid_class = '' if scan_result['严重程度'] == '严重' else 'warning'
                 # Generate a fake CID number for display
                 cid_number = f"CID {hash(scan_result['问题描述']) % 1000000:06d}"
-                html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-header'><span class='scan-result-cid {cid_class}'>{cid_number}</span><span>未检查的返回值 (CHECKED_RETURN)</span></div><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
+                # Get the count of issues
+                issue_count = scan_result.get('问题数量', 1)
+                count_text = f"({issue_count} issues)" if issue_count > 1 else ""
+                html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-header'><span class='scan-result-cid {cid_class}'>{cid_number}</span><span>未检查的返回值 (CHECKED_RETURN)</span><span class='scan-result-count'>{count_text}</span></div><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
     
 
     
