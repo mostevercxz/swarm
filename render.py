@@ -794,11 +794,26 @@ class Render:
         """
         # Get the full new file content for context
         try:
-            with open(os.path.join(repo_path, filename), 'r', encoding='utf-8', errors='replace') as f:
-                full_lines = f.read().splitlines()
-        except Exception:
-            # print an error log
-            print(f"Error reading file {filename}")
+            # Try multiple possible locations for the file
+            file_paths = [
+                os.path.join(repo_path, filename),  # Try exact path
+                os.path.join(repo_path, 'trunk', filename),  # Try trunk path
+                os.path.join(os.path.dirname(repo_path), filename),  # Try parent directory
+                os.path.join(os.path.dirname(repo_path), 'trunk', filename)  # Try parent/trunk
+            ]
+            
+            full_lines = []
+            for file_path in file_paths:
+                if os.path.exists(file_path):
+                    with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                        full_lines = f.read().splitlines()
+                        break
+            
+            if not full_lines:
+                print(f"Warning: Could not find file {filename} in any of these locations: {file_paths}")
+                
+        except Exception as e:
+            print(f"Error reading file {filename} from {file_paths}: {str(e)}")
             full_lines = []
         
         # Parse original diff hunks
@@ -999,7 +1014,7 @@ class Render:
                     # Get the count of issues
                     issue_count = scan_result.get('问题数量', 1)
                     count_text = f"({issue_count} issues)" if issue_count > 1 else ""
-                    html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-header'><span class='scan-result-cid {cid_class}'>{cid_number}</span><span>问题待分类(v0.3版本后加入)</span><span class='scan-result-count'>{count_text}</span></div><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
+                    html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-header'><span class='scan-result-cid {cid_class}'>{cid_number}</span><span>需特别注意</span><span class='scan-result-count'>{count_text}</span></div><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>")
             
             # Render the actual diff line
             if l.startswith('+'):
@@ -1040,7 +1055,7 @@ class Render:
                 # Get the count of issues
                 issue_count = scan_result.get('问题数量', 1)
                 count_text = f"({issue_count} issues)" if issue_count > 1 else ""
-                html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-header'><span class='scan-result-cid {cid_class}'>{cid_number}</span><span>未检查的返回值 (CHECKED_RETURN)</span><span class='scan-result-count'>{count_text}</span></div><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>") 
+                html_lines.append(f"<tr class='scan-result' id='{jump_id}'><td class='diff-sign'></td><td class='diff-line-num'></td><td class='diff-line-num'></td><td class='diff-line-content scan-result-content {severity_class}'><div class='scan-result-header'><span class='scan-result-cid {cid_class}'>{cid_number}</span><span>警告</span><span class='scan-result-count'>{count_text}</span></div><div class='scan-result-description'>{html.escape(scan_result['问题描述'])}</div><div class='scan-result-suggestion'>{html.escape(scan_result['修改意见'])}</div></td></tr>") 
     
     def generate_review_page(self, commit_info, file_tree, scan_results, new_file_contents, diff_htmls):
         """
